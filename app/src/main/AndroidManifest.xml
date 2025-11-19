@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- UWB.UWB 하드웨어 사용 선언 -->
-    <uses-feature android:name="android.hardware.uwb" android:required="true" />
+    <uses-feature android:name="android.hardware.uwb" android:required="false" />
     <!-- UWB.UWB Ranging 런타임 권한 (API 31+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.UWB_RANGING" />

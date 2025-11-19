@@ -10,6 +10,8 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattServer;
+import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
@@ -33,10 +35,13 @@ import androidx.core.app.ActivityCompat;
 
 import com.javaprogemming.project.Data;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class Bluetooth {
     private static final String TAG = "BT";
@@ -58,12 +63,17 @@ public class Bluetooth {
 
     private BluetoothLeAdvertiser bluetoothLeAdvertiser;
     private BluetoothGatt bluetoothGatt;
+    private BluetoothGattServer bluetoothGattServer;
 
-    private Context applicationContext; // Add this field
+
+    private byte[] localUwbAddress;
+    private int sessionId;
+
+    private Context currentContext;
 
     public Bluetooth(Context context) {
-        this.applicationContext = context.getApplicationContext();
-        bluetoothManager = (BluetoothManager) applicationContext.getSystemService(Context.BLUETOOTH_SERVICE);
+        this.currentContext = context;
+        bluetoothManager = (BluetoothManager) currentContext.getSystemService(Context.BLUETOOTH_SERVICE);
         if (bluetoothManager != null) {
             bluetoothAdapter = bluetoothManager.getAdapter();
             if (bluetoothAdapter != null) {
@@ -71,31 +81,69 @@ public class Bluetooth {
                 bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
             }
         }
+        // Generate a random session ID for this device instance
+        this.sessionId = new Random().nextInt();
     }
 
-    private final Map<String, ScanResult> bleDevicesMap = new HashMap<>();
-    private final Map<String, BluetoothDevice> classicDevicesMap = new HashMap<>();
     private ArrayAdapter<String> bleDeviceAdapter;
-    private final ArrayList<String> bleDeviceList = new ArrayList<>();
-    private final ArrayList<String> classicDeviceList = new ArrayList<>();
 
     private boolean isScanning = false;
     private boolean isAdvertising = false;
 
     public void setBleDeviceAdapter(ArrayAdapter<String> adapter, ArrayList<String> deviceList) {
         this.bleDeviceAdapter = adapter;
-        bleDeviceList.clear();
-        bleDeviceList.addAll(deviceList);
+        Data.bleDeviceList.clear();
+        Data.bleDeviceList.addAll(deviceList);
     }
+
+    public void setLocalUwbAddress(byte[] address) {
+        this.localUwbAddress = address;
+        Log.d(TAG, "Local UWB address set in Bluetooth class: " + bytesToHex(address));
+    }
+
 
     // 기기가 Bluetooth를 지원하는지 확인하는 메소드
     public boolean checkBluetoothSupoort(){
         return bluetoothAdapter != null;
     }
 
+    public void startGattServer() {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Missing BLUETOOTH_CONNECT permission for GATT server");
+            return;
+        }
+        bluetoothGattServer = bluetoothManager.openGattServer(currentContext, gattServerCallback);
+        if (bluetoothGattServer == null) {
+            Log.e(TAG, "Failed to open GATT server.");
+            return;
+        }
+
+        BluetoothGattService service = new BluetoothGattService(Data.UWB_SERVICE_UUID.getUuid(), BluetoothGattService.SERVICE_TYPE_PRIMARY);
+        BluetoothGattCharacteristic characteristic = new BluetoothGattCharacteristic(
+                Data.UWB_PARAMS_CHARACTERISTIC_UUID,
+                BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_READ
+        );
+        service.addCharacteristic(characteristic);
+        bluetoothGattServer.addService(service);
+        Log.d(TAG, "GATT Server started and service added.");
+    }
+
+    public void stopGattServer() {
+        if (bluetoothGattServer == null) return;
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Missing BLUETOOTH_CONNECT permission for stopping GATT server");
+            return;
+        }
+        bluetoothGattServer.close();
+        bluetoothGattServer = null;
+        Log.d(TAG, "GATT Server stopped.");
+    }
+
+
     public void startAdvertise(){
         if(isAdvertising) return;
-        if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_ADVERTISE permission not granted");
             return;
         }
@@ -123,7 +171,7 @@ public class Bluetooth {
 
     public void stopAdvertise(){
         if (!isAdvertising || bluetoothLeAdvertiser == null) return;
-        if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_SCAN permission not granted");
             return;
         }
@@ -148,12 +196,12 @@ public class Bluetooth {
 
     public void startScan() {
         if (isScanning) return;
-        if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_SCAN permission not granted");
             return;
         }
-        bleDevicesMap.clear();
-        bleDeviceList.clear();
+        Data.bleDevicesMap.clear();
+        Data.bleDeviceList.clear();
         if(bleDeviceAdapter != null) {
             bleDeviceAdapter.clear();
             bleDeviceAdapter.notifyDataSetChanged();
@@ -179,7 +227,7 @@ public class Bluetooth {
 
     public void stopScan() {
         if (!isScanning || bluetoothLeScanner == null) return;
-        if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_SCAN permission not granted");
             return;
         }
@@ -189,14 +237,14 @@ public class Bluetooth {
     }
 
     public void connectToDevice(String address) {
-        if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_CONNECT permission not granted");
             return;
         }
-        ScanResult scanResult = bleDevicesMap.get(address);
+        ScanResult scanResult = Data.bleDevicesMap.get(address);
         if (scanResult != null) {
             BluetoothDevice device = scanResult.getDevice();
-            bluetoothGatt = device.connectGatt(applicationContext, false, gattCallback);
+            bluetoothGatt = device.connectGatt(currentContext, false, gattCallback);
         }
     }
 
@@ -211,10 +259,10 @@ public class Bluetooth {
                     return;
                 }
                 if (device != null && device.getName() != null && device.getAddress() != null) {
-                    if (!classicDevicesMap.containsKey(device.getAddress())) {
+                    if (!Data.classicDevicesMap.containsKey(device.getAddress())) {
                         Log.d(TAG, "Classic Device Found: " + device.getName() + " - " + device.getAddress());
-                        classicDevicesMap.put(device.getAddress(), device);
-                        classicDeviceList.add(device.getName() + "\n" + device.getAddress());
+                        Data.classicDevicesMap.put(device.getAddress(), device);
+                        Data.classicDeviceList.add(device.getName() + "\n" + device.getAddress());
                         // classicDeviceAdapter.notifyDataSetChanged();
                     }
                 }
@@ -231,16 +279,16 @@ public class Bluetooth {
             super.onScanResult(callbackType, result);
             BluetoothDevice device = result.getDevice();
 
-            if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "BLUETOOTH_CONNECT permission not granted, cannot get device name.");
                 return;
             }
 
             if (device.getName() != null && device.getAddress() != null) {
-                if (!bleDevicesMap.containsKey(device.getAddress())) {
+                if (!Data.bleDevicesMap.containsKey(device.getAddress())) {
                     Log.d(TAG, "BLE Device Found: " + device.getName() + " - " + device.getAddress());
-                    bleDevicesMap.put(device.getAddress(), result);
-                    bleDeviceList.add(device.getName() + "\n" + device.getAddress());
+                    Data.bleDevicesMap.put(device.getAddress(), result);
+                    Data.bleDeviceList.add(device.getName() + "\n" + device.getAddress());
                     if(bleDeviceAdapter != null) bleDeviceAdapter.notifyDataSetChanged();
                 }
             }
@@ -260,7 +308,7 @@ public class Bluetooth {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "GATT Connected. Discovering services...");
                 bluetoothGatt = gatt;
-                if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                     return;
                 }
                 gatt.discoverServices();
@@ -288,7 +336,7 @@ public class Bluetooth {
                     Log.e(TAG, "UWB.UWB Characteristic not found.");
                     return;
                 }
-                if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
 
                     return;
                 }
@@ -310,7 +358,7 @@ public class Bluetooth {
                         uwbParametersListener.onUwbParametersReceived(value);
                     }
                     // 파라미터 획득 후 GATT 연결 해제
-                    if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                         return;
                     }
                     gatt.disconnect();
@@ -321,7 +369,59 @@ public class Bluetooth {
         }
     };
 
+    private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+            super.onConnectionStateChange(device, status, newState);
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.i(TAG, "GATT Server: Device Connected - " + device.getAddress());
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Log.i(TAG, "GATT Server: Device Disconnected - " + device.getAddress());
+            }
+        }
 
+        @Override
+        public void onServiceAdded(int status, BluetoothGattService service) {
+            super.onServiceAdded(status, service);
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "GATT Server: Service Added - " + service.getUuid());
+            } else {
+                Log.e(TAG, "GATT Server: Service Add Failed - " + status);
+            }
+        }
+
+        @Override
+        public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset,
+                                                BluetoothGattCharacteristic characteristic) {
+            super.onCharacteristicReadRequest(device, requestId, offset, characteristic);
+            if (Data.UWB_PARAMS_CHARACTERISTIC_UUID.equals(characteristic.getUuid())) {
+                if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    Log.e(TAG, "GATT Server: Missing BLUETOOTH_CONNECT permission for read request");
+                    bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                    return;
+                }
+
+                if (localUwbAddress == null) {
+                    Log.e(TAG, "GATT Server: Local UWB address is not set yet.");
+                    bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                    return;
+                }
+
+                // UWB Address (8 bytes) + Session ID (4 bytes) = 12 bytes
+                byte[] value = new byte[12];
+                ByteBuffer buffer = ByteBuffer.wrap(value);
+                buffer.put(localUwbAddress);
+                buffer.putInt(sessionId);
+
+                Log.d(TAG, "GATT Server: Responding to read request with UWB params: " + bytesToHex(value));
+
+                bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
+            } else {
+                Log.w(TAG, "GATT Server: Read request for unknown characteristic: " + characteristic.getUuid());
+                bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+            }
+        }
+    };
 
 
     public boolean getScanning(){
@@ -335,6 +435,7 @@ public class Bluetooth {
 
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
     public static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "null";
         char[] hexChars = new char[bytes.length * 2];
         for (int j = 0; j < bytes.length; j++) {
             int v = bytes[j] & 0xFF;
