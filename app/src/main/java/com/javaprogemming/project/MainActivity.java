@@ -41,7 +41,6 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     private TextView localAddressTextView;
 
     private ArrayAdapter<String> bleDeviceAdapter;
-    private ArrayList<String> bleDeviceList = new ArrayList<>();
 
 
     // 권한 요청 런처
@@ -77,14 +76,13 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         rangingResultTextView = findViewById(R.id.rangingResultTextView);
         localAddressTextView = findViewById(R.id.localAddressTextView);
 
-        bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, bleDeviceList);
+        bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, Data.bleDeviceList);
         deviceListView.setAdapter(bleDeviceAdapter);
 
-        bcl.setBleDeviceAdapter(bleDeviceAdapter, bleDeviceList);
+        bcl.setBleDeviceAdapter(bleDeviceAdapter, Data.bleDeviceList);
 
 
         scanButton.setOnClickListener(v -> {
-            bcl.startAdvertise();
             bcl.startScan();
         });
 
@@ -133,6 +131,13 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             return;
         }
         bcl.setUwbParametersListener(this);
+
+        // GATT 서버 시작
+        bcl.startGattServer();
+        // 광고 시작
+        bcl.startAdvertise();
+        // 로컬 UWB 주소 미리 가져오기
+        uwbRangingHelper.prepareLocalAddress(false); // We can be a controlee
     }
 
     @Override
@@ -145,8 +150,8 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             if (params.length >= 12) { // if session id is provided
                  sessionId = java.nio.ByteBuffer.wrap(params, 8, 4).getInt();
             }
-            uwbRangingHelper.prepareLocalAddress(true); // Assuming controller
-            uwbRangingHelper.startRanging(remoteAddress, sessionId, true); // Assuming controller
+            // We are the controller because we initiated the connection
+            uwbRangingHelper.startRanging(remoteAddress, sessionId, true);
         } else {
             Log.e(TAG, "Invalid UWB parameters received.");
             onRangingError("Invalid UWB parameters");
@@ -155,6 +160,9 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
 
     @Override
     public void onLocalAddressReceived(byte[] address) {
+        // GATT 서버에 로컬 UWB 주소 설정
+        bcl.setLocalUwbAddress(address);
+
         runOnUiThread(() -> {
             localAddressTextView.setText("Local UWB Address: " + Bluetooth.bytesToHex(address));
         });
@@ -184,4 +192,12 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         });
         Log.d(TAG, "Ranging complete");
     }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        bcl.stopAdvertise();
+        bcl.stopGattServer();
+    }
 }
+
