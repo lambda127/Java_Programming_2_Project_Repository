@@ -19,3 +19,8 @@ local.properties
 
 .env
 /.env
+
+
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/deploymentTargetSelector.xml
