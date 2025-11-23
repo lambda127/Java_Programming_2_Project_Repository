@@ -48,6 +48,7 @@ public class Bluetooth {
 
     public interface UwbParametersListener {
         void onUwbParametersReceived(byte[] params);
+        void onControllerAddressReceived(byte[] address);
     }
 
     private UwbParametersListener uwbParametersListener;
@@ -101,6 +102,10 @@ public class Bluetooth {
         Log.d(TAG, "Local UWB address set in Bluetooth class: " + bytesToHex(address));
     }
 
+    public int getSessionId() {
+        return sessionId;
+    }
+
 
     // 기기가 Bluetooth를 지원하는지 확인하는 메소드
     public boolean checkBluetoothSupoort(){
@@ -121,8 +126,8 @@ public class Bluetooth {
         BluetoothGattService service = new BluetoothGattService(Data.UWB_SERVICE_UUID.getUuid(), BluetoothGattService.SERVICE_TYPE_PRIMARY);
         BluetoothGattCharacteristic characteristic = new BluetoothGattCharacteristic(
                 Data.UWB_PARAMS_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
+                BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE,
+                BluetoothGattCharacteristic.PERMISSION_READ | BluetoothGattCharacteristic.PERMISSION_WRITE
         );
         service.addCharacteristic(characteristic);
         bluetoothGattServer.addService(service);
@@ -358,16 +363,43 @@ public class Bluetooth {
                         uwbParametersListener.onUwbParametersReceived(value);
                     }
                     // 파라미터 획득 후 GATT 연결 해제
-                    if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                        return;
-                    }
-                    gatt.disconnect();
+                    // if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    //    return;
+                    // }
+                    // gatt.disconnect();
                 }
             } else {
                 Log.e(TAG, "Characteristic Read Failed: " + status);
             }
         }
     };
+
+    public void writeUwbAddress(byte[] address) {
+        if (bluetoothGatt == null) {
+            Log.e(TAG, "GATT is not connected.");
+            return;
+        }
+        BluetoothGattService service = bluetoothGatt.getService(Data.UWB_SERVICE_UUID.getUuid());
+        if (service == null) {
+            Log.e(TAG, "UWB Service not found.");
+            return;
+        }
+        BluetoothGattCharacteristic characteristic = service.getCharacteristic(Data.UWB_PARAMS_CHARACTERISTIC_UUID);
+        if (characteristic == null) {
+            Log.e(TAG, "UWB Characteristic not found.");
+            return;
+        }
+
+        if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Missing BLUETOOTH_CONNECT permission for writing characteristic");
+            return;
+        }
+
+        characteristic.setValue(address);
+        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        boolean success = bluetoothGatt.writeCharacteristic(characteristic);
+        Log.d(TAG, "Write UWB Address initiated: " + success);
+    }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
         @Override
@@ -419,6 +451,40 @@ public class Bluetooth {
             } else {
                 Log.w(TAG, "GATT Server: Read request for unknown characteristic: " + characteristic.getUuid());
                 bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+            }
+        }
+
+        @Override
+        public void onCharacteristicWriteRequest(BluetoothDevice device, int requestId,
+                                                 BluetoothGattCharacteristic characteristic,
+                                                 boolean preparedWrite, boolean responseNeeded,
+                                                 int offset, byte[] value) {
+            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
+            
+            if (Data.UWB_PARAMS_CHARACTERISTIC_UUID.equals(characteristic.getUuid())) {
+                if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                     Log.e(TAG, "GATT Server: Missing BLUETOOTH_CONNECT permission for write request");
+                     if (responseNeeded) {
+                         bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                     }
+                     return;
+                }
+
+                Log.i(TAG, "GATT Server: Write request received: " + bytesToHex(value));
+                
+                if (responseNeeded) {
+                    bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
+                }
+
+                if (value != null && value.length >= 8) {
+                     if (uwbParametersListener != null) {
+                         uwbParametersListener.onControllerAddressReceived(value);
+                     }
+                }
+            } else {
+                 if (responseNeeded) {
+                     bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                 }
             }
         }
     };

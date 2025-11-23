@@ -42,6 +42,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
 
     private Bluetooth bcl;
     private UwbRangingHelper uwbRangingHelper;
+    private byte[] localUwbAddress;
 
     private Button scanButton;
     private ListView deviceListView;
@@ -227,6 +228,13 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             }
             // We are the controller because we initiated the connection
             uwbRangingHelper.startRanging(remoteAddress, sessionId, true);
+            
+            // Write our local address to the remote device so they can start ranging too
+            if (localUwbAddress != null) {
+                bcl.writeUwbAddress(localUwbAddress);
+            } else {
+                Log.e(TAG, "Cannot write local address because it is null");
+            }
         } else {
             Log.e(TAG, "Invalid UWB parameters received.");
             onRangingError("Invalid UWB parameters");
@@ -234,9 +242,19 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     }
 
     @Override
+    public void onControllerAddressReceived(byte[] address) {
+        Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address));
+        // We are the controlee (Advertiser)
+        // Use the session ID we generated (which the Controller is also using)
+        int sessionId = bcl.getSessionId();
+        uwbRangingHelper.startRanging(address, sessionId, false);
+    }
+
+    @Override
     public void onLocalAddressReceived(byte[] address) {
         // GATT 서버에 로컬 UWB 주소 설정
         bcl.setLocalUwbAddress(address);
+        this.localUwbAddress = address;
 
         runOnUiThread(() -> {
             localAddressTextView.setText("Local UWB Address: " + Bluetooth.bytesToHex(address));
