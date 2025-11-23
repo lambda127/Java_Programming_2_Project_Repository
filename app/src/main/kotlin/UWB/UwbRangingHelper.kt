@@ -49,10 +49,7 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     manager.controleeSessionScope()
                 }
                 var addressBytes = sessionScope.localAddress.address
-                if (Build.VERSION.SDK_INT <= 33) {
-                    Log.d(TAG, "Android 13 or lower: Reversing local address for advertisement due to known byte-order bug.")
-                    addressBytes = addressBytes.reversedArray()
-                }
+                // Removed Android 13 byte reversal logic
                 Log.d(TAG, "로컬 주소 수신: ${addressBytes.joinToString { "%02X".format(it) }}")
                 callback.onLocalAddressReceived(addressBytes)
             } catch (e: Exception) {
@@ -79,25 +76,14 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     manager.controleeSessionScope()
                 }
 
-
-                if (Build.VERSION.SDK_INT <= 33) {
-                    Log.d(TAG, "Android 13 or lower: Reversing remoteAddress byte order.")
-                    Log.d(TAG, "Before reversing : "+remoteAddress);
-
-                    Log.d(TAG, "After reversing : "+remoteAddress.reversedArray());
-
-                }
-
-                val partnerAddressBytes = if(Build.VERSION.SDK_INT <= 33) remoteAddress.reversedArray() else remoteAddress;
+                // Removed Android 13 byte reversal logic for remoteAddress
+                val partnerAddressBytes = remoteAddress
                 val partnerAddress = UwbAddress(partnerAddressBytes)
                 val partnerDevice = UwbDevice.createForAddress(partnerAddress.address)
 
                 // 8바이트 세션 키를 생성합니다.
                 var sessionKey = "12345678".toByteArray()
-                if (Build.VERSION.SDK_INT <= 33) {
-                    Log.d(TAG, "Android 13 or lower: Reversing sessionKey byte order.")
-                    sessionKey = sessionKey.reversedArray()
-                }
+                // Removed Android 13 byte reversal logic for sessionKey
 
                 val parameters = RangingParameters(
                     uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
