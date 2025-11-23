@@ -37,8 +37,8 @@ import UWB.UwbRangingHelper;
 import UWB.UwbRangingCallback;
 
 public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback {
-
     private static final String TAG = "UWB_BT_App_Java";
+
 
     private Bluetooth bcl;
     private UwbRangingHelper uwbRangingHelper;
@@ -49,6 +49,18 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     private TextView localAddressTextView;
 
     private ArrayAdapter<String> bleDeviceAdapter;
+
+    ///
+    private View overlay;
+    private View overlayIntro;
+    private TextView followText;
+    private TextView loadingText;
+    private View redDot;
+    private LinearLayout bottomPanel;
+    private View loadingDotsContainer;
+
+    private Handler handler = new Handler();
+
 
 
     // 권한 요청 런처
@@ -66,21 +78,57 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 }
             });
 
-    private View overlay;
-    private View overlayIntro;
-    private TextView followText;
-    private TextView loadingText;
-    private View redDot;
-    private LinearLayout bottomPanel;
-    private View loadingDotsContainer;
 
-    private Handler handler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // activity_main.xml 사용
+        EdgeToEdge.enable(this);
+        setContentView(Data.isTesting ? R.layout.activity_test : R.layout.activity_main);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
 
+
+        /// Ranging을 위한 기본 세팅
+
+        bcl = new Bluetooth(this);
+
+        bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, Data.bleDeviceList);
+
+        bcl.setBleDeviceAdapter(bleDeviceAdapter, Data.bleDeviceList);
+
+        uwbRangingHelper = new UwbRangingHelper(this, this);
+        checkPermissions();
+
+
+        /// Test UI
+        if(Data.isTesting) testUiSetting();
+        else uiSetting();
+    }
+
+    private void testUiSetting(){
+        scanButton = findViewById(R.id.scanButton);
+        deviceListView = findViewById(R.id.deviceListView);
+        rangingResultTextView = findViewById(R.id.rangingResultTextView);
+        localAddressTextView = findViewById(R.id.localAddressTextView);
+
+        deviceListView.setAdapter(bleDeviceAdapter);
+
+        deviceListView.setOnItemClickListener((parent, view, position, id) -> {
+            String deviceInfo = (String) parent.getItemAtPosition(position);
+            String address = deviceInfo.split("\n")[1];
+            bcl.connectToDevice(address);
+        });
+
+        scanButton.setOnClickListener(v -> {
+            bcl.startScan();
+        });
+    }
+
+    private void uiSetting(){
         overlay = findViewById(R.id.overlay);
         overlayIntro = findViewById(R.id.overlayIntro);
         followText = findViewById(R.id.followText);
@@ -122,6 +170,104 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         startText.setOnClickListener(v -> startAction());
         endText.setOnClickListener(v -> resetAction());
     }
+
+
+
+    private void checkPermissions() {
+        // API 31+ 권한 목록
+        String[] PERMISSIONS = {
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.UWB_RANGING
+        };
+
+        boolean allGranted = true;
+        for (String permission : PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                allGranted = false;
+                break;
+            }
+        }
+
+        if (!allGranted) {
+            requestPermissionLauncher.launch(PERMISSIONS);
+        } else {
+            onPermissionsGranted();
+        }
+    }
+    private void onPermissionsGranted() {
+        Log.d(TAG, "All permissions granted.");
+        if (!bcl.checkBluetoothSupoort()) {
+            Toast.makeText(this, "Bluetooth가 지원되지 않습니다.", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+        bcl.setUwbParametersListener(this);
+
+        // GATT 서버 시작
+        bcl.startGattServer();
+        // 광고 시작
+        bcl.startAdvertise();
+        // 로컬 UWB 주소 미리 가져오기
+        uwbRangingHelper.prepareLocalAddress(false); // We can be a controlee
+    }
+
+    @Override
+    public void onUwbParametersReceived(byte[] params) {
+        Log.d(TAG, "UWB Parameters received: " + Bluetooth.bytesToHex(params));
+        // Assuming 8-byte address and 4-byte session ID
+        if (params.length >= 8) { // Assuming at least 8-byte address
+            byte[] remoteAddress = Arrays.copyOfRange(params, 0, 8);
+            int sessionId = 0; // Default session id
+            if (params.length >= 12) { // if session id is provided
+                sessionId = java.nio.ByteBuffer.wrap(params, 8, 4).getInt();
+            }
+            // We are the controller because we initiated the connection
+            uwbRangingHelper.startRanging(remoteAddress, sessionId, true);
+        } else {
+            Log.e(TAG, "Invalid UWB parameters received.");
+            onRangingError("Invalid UWB parameters");
+        }
+    }
+
+    @Override
+    public void onLocalAddressReceived(byte[] address) {
+        // GATT 서버에 로컬 UWB 주소 설정
+        bcl.setLocalUwbAddress(address);
+
+        runOnUiThread(() -> {
+            localAddressTextView.setText("Local UWB Address: " + Bluetooth.bytesToHex(address));
+        });
+        Log.d(TAG, "Local UWB address: " + Bluetooth.bytesToHex(address));
+    }
+
+    @Override
+    public void onRangingResult(float distance) {
+        runOnUiThread(() -> {
+            rangingResultTextView.setText("Ranging Result: " + distance + "m");
+        });
+        Log.d(TAG, "Ranging result: " + distance + "m");
+    }
+
+    @Override
+    public void onRangingError(String error) {
+        runOnUiThread(() -> {
+            rangingResultTextView.setText("Ranging Error: " + error);
+        });
+        Log.e(TAG, "Ranging error: " + error);
+    }
+
+    @Override
+    public void onRangingComplete() {
+        runOnUiThread(() -> {
+            rangingResultTextView.setText("Ranging Complete");
+        });
+        Log.d(TAG, "Ranging complete");
+    }
+
 
     private void startAction() {
         if (overlay != null) overlay.setVisibility(View.VISIBLE);
@@ -184,145 +330,12 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     protected void onDestroy() {
         super.onDestroy();
         handler.removeCallbacksAndMessages(null);
-    }
-}
-        EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_main);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
 
-        bcl = new Bluetooth(this);
-
-        scanButton = findViewById(R.id.scanButton);
-        deviceListView = findViewById(R.id.deviceListView);
-        rangingResultTextView = findViewById(R.id.rangingResultTextView);
-        localAddressTextView = findViewById(R.id.localAddressTextView);
-
-        bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, Data.bleDeviceList);
-        deviceListView.setAdapter(bleDeviceAdapter);
-
-        bcl.setBleDeviceAdapter(bleDeviceAdapter, Data.bleDeviceList);
-
-
-        scanButton.setOnClickListener(v -> {
-            bcl.startScan();
-        });
-
-        deviceListView.setOnItemClickListener((parent, view, position, id) -> {
-            String deviceInfo = (String) parent.getItemAtPosition(position);
-            String address = deviceInfo.split("\n")[1];
-            bcl.connectToDevice(address);
-        });
-
-        uwbRangingHelper = new UwbRangingHelper(this, this);
-        checkPermissions();
-    }
-
-
-
-    private void checkPermissions() {
-        // API 31+ 권한 목록
-        String[] PERMISSIONS = {
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_ADVERTISE,
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.UWB_RANGING
-        };
-
-        boolean allGranted = true;
-        for (String permission : PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                allGranted = false;
-                break;
-            }
-        }
-
-        if (!allGranted) {
-            requestPermissionLauncher.launch(PERMISSIONS);
-        } else {
-            onPermissionsGranted();
-        }
-    }
-    private void onPermissionsGranted() {
-        Log.d(TAG, "All permissions granted.");
-        if (!bcl.checkBluetoothSupoort()) {
-            Toast.makeText(this, "Bluetooth가 지원되지 않습니다.", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-        bcl.setUwbParametersListener(this);
-
-        // GATT 서버 시작
-        bcl.startGattServer();
-        // 광고 시작
-        bcl.startAdvertise();
-        // 로컬 UWB 주소 미리 가져오기
-        uwbRangingHelper.prepareLocalAddress(false); // We can be a controlee
-    }
-
-    @Override
-    public void onUwbParametersReceived(byte[] params) {
-        Log.d(TAG, "UWB Parameters received: " + Bluetooth.bytesToHex(params));
-        // Assuming 8-byte address and 4-byte session ID
-        if (params.length >= 8) { // Assuming at least 8-byte address
-            byte[] remoteAddress = Arrays.copyOfRange(params, 0, 8);
-            int sessionId = 0; // Default session id
-            if (params.length >= 12) { // if session id is provided
-                 sessionId = java.nio.ByteBuffer.wrap(params, 8, 4).getInt();
-            }
-            // We are the controller because we initiated the connection
-            uwbRangingHelper.startRanging(remoteAddress, sessionId, true);
-        } else {
-            Log.e(TAG, "Invalid UWB parameters received.");
-            onRangingError("Invalid UWB parameters");
-        }
-    }
-
-    @Override
-    public void onLocalAddressReceived(byte[] address) {
-        // GATT 서버에 로컬 UWB 주소 설정
-        bcl.setLocalUwbAddress(address);
-
-        runOnUiThread(() -> {
-            localAddressTextView.setText("Local UWB Address: " + Bluetooth.bytesToHex(address));
-        });
-        Log.d(TAG, "Local UWB address: " + Bluetooth.bytesToHex(address));
-    }
-
-    @Override
-    public void onRangingResult(float distance) {
-        runOnUiThread(() -> {
-            rangingResultTextView.setText("Ranging Result: " + distance + "m");
-        });
-        Log.d(TAG, "Ranging result: " + distance + "m");
-    }
-
-    @Override
-    public void onRangingError(String error) {
-        runOnUiThread(() -> {
-            rangingResultTextView.setText("Ranging Error: " + error);
-        });
-        Log.e(TAG, "Ranging error: " + error);
-    }
-
-    @Override
-    public void onRangingComplete() {
-        runOnUiThread(() -> {
-            rangingResultTextView.setText("Ranging Complete");
-        });
-        Log.d(TAG, "Ranging complete");
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
         bcl.stopAdvertise();
         bcl.stopGattServer();
     }
 }
+
+
+
 
