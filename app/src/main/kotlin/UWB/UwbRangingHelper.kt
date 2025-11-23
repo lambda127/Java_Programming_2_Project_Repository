@@ -1,6 +1,7 @@
 package UWB
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.core.uwb.*
 import kotlinx.coroutines.*
@@ -47,7 +48,11 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     Log.d(TAG, "Controlee session scope 생성 중")
                     manager.controleeSessionScope()
                 }
-                val addressBytes = sessionScope.localAddress.address
+                var addressBytes = sessionScope.localAddress.address
+                if (Build.VERSION.SDK_INT <= 33) {
+                    Log.d(TAG, "Android 13 or lower: Reversing local address for advertisement due to known byte-order bug.")
+                    addressBytes = addressBytes.reversedArray()
+                }
                 Log.d(TAG, "로컬 주소 수신: ${addressBytes.joinToString { "%02X".format(it) }}")
                 callback.onLocalAddressReceived(addressBytes)
             } catch (e: Exception) {
@@ -74,14 +79,31 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     manager.controleeSessionScope()
                 }
 
-                val partnerAddress = UwbAddress(remoteAddress)
+
+                if (Build.VERSION.SDK_INT <= 33) {
+                    Log.d(TAG, "Android 13 or lower: Reversing remoteAddress byte order.")
+                    Log.d(TAG, "Before reversing : "+remoteAddress);
+
+                    Log.d(TAG, "After reversing : "+remoteAddress.reversedArray());
+
+                }
+
+                val partnerAddressBytes = if(Build.VERSION.SDK_INT <= 33) remoteAddress.reversedArray() else remoteAddress;
+                val partnerAddress = UwbAddress(partnerAddressBytes)
                 val partnerDevice = UwbDevice.createForAddress(partnerAddress.address)
+
+                // 8바이트 세션 키를 생성합니다.
+                var sessionKey = "12345678".toByteArray()
+                if (Build.VERSION.SDK_INT <= 33) {
+                    Log.d(TAG, "Android 13 or lower: Reversing sessionKey byte order.")
+                    sessionKey = sessionKey.reversedArray()
+                }
 
                 val parameters = RangingParameters(
                     uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
                     sessionId = sessionId,
                     subSessionId = 0,
-                    sessionKeyInfo = null,
+                    sessionKeyInfo = sessionKey,
                     subSessionKeyInfo = null,
                     complexChannel = null,
                     peerDevices = listOf(partnerDevice),
