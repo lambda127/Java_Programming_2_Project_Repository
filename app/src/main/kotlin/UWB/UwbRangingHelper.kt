@@ -88,9 +88,7 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                 val parameters = RangingParameters(
                     uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
                     sessionId = sessionId,
-                    subSessionId = 0,
                     sessionKeyInfo = sessionKey,
-                    subSessionKeyInfo = null,
                     complexChannel = null,
                     peerDevices = listOf(partnerDevice),
                     updateRateType = RangingParameters.RANGING_UPDATE_RATE_AUTOMATIC
