@@ -96,35 +96,40 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     updateRateType = RangingParameters.RANGING_UPDATE_RATE_AUTOMATIC
                 )
 
-                Log.d(TAG, "Ranging session 준비 중...")
-                sessionScope.prepareSession(parameters)
-                    .onEach { result ->
-                        when(result) {
-                            is RangingResult.RangingResultPosition -> {
-                                val distance = result.position.distance
-                                if (distance != null) {
-                                    Log.d(TAG, "Ranging 성공: 거리 = ${distance.value}m")
-                                    callback.onRangingResult(distance.value)
-                                } else {
-                                    Log.d(TAG, "Ranging 결과에 거리가 포함되지 않음")
+                Log.d(TAG, "Ranging session 준비 중... Parameters: $parameters")
+                try {
+                    sessionScope.prepareSession(parameters)
+                        .onEach { result ->
+                            when(result) {
+                                is RangingResult.RangingResultPosition -> {
+                                    val distance = result.position.distance
+                                    if (distance != null) {
+                                        Log.d(TAG, "Ranging 성공: 거리 = ${distance.value}m")
+                                        callback.onRangingResult(distance.value)
+                                    } else {
+                                        Log.d(TAG, "Ranging 결과에 거리가 포함되지 않음")
+                                    }
+                                }
+                                is RangingResult.RangingResultPeerDisconnected -> {
+                                    Log.w(TAG, "상대방 연결 끊김")
+                                    callback.onRangingError("Peer disconnected")
+                                    stopRanging()
+                                }
+                                else -> {
+                                    Log.d(TAG, "처리되지 않은 Ranging 결과: $result")
                                 }
                             }
-                            is RangingResult.RangingResultPeerDisconnected -> {
-                                Log.w(TAG, "상대방 연결 끊김")
-                                callback.onRangingError("Peer disconnected")
-                                stopRanging()
-                            }
-                            else -> {
-                                Log.d(TAG, "처리되지 않은 Ranging 결과: $result")
-                            }
                         }
-                    }
-                    .catch { e ->
-                        Log.e(TAG, "Ranging flow에서 오류 발생", e)
-                        callback.onRangingError("Ranging flow error: ${e.message}")
-                    }
-                    .launchIn(this)
-                Log.d(TAG, "Ranging session 시작됨")
+                        .catch { e ->
+                            Log.e(TAG, "Ranging flow에서 오류 발생", e)
+                            callback.onRangingError("Ranging flow error: ${e.message}")
+                        }
+                        .launchIn(this)
+                    Log.d(TAG, "Ranging session 시작됨")
+                } catch (e: Exception) {
+                     Log.e(TAG, "prepareSession 호출 중 오류 발생", e)
+                     callback.onRangingError("prepareSession error: ${e.message}")
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Ranging 시작 실패", e)

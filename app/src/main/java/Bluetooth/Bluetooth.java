@@ -117,6 +117,12 @@ public class Bluetooth {
             Log.e(TAG, "Missing BLUETOOTH_CONNECT permission for GATT server");
             return;
         }
+
+        if (bluetoothGattServer != null) {
+            Log.w(TAG, "GATT Server already open. Skipping start.");
+            return;
+        }
+
         bluetoothGattServer = bluetoothManager.openGattServer(currentContext, gattServerCallback);
         if (bluetoothGattServer == null) {
             Log.e(TAG, "Failed to open GATT server.");
@@ -246,10 +252,19 @@ public class Bluetooth {
             Log.e(TAG, "BLUETOOTH_CONNECT permission not granted");
             return;
         }
+
+        // Prevent multiple GATT connections
+        if (bluetoothGatt != null) {
+            Log.d(TAG, "Closing existing GATT connection before new connection.");
+            bluetoothGatt.close();
+            bluetoothGatt = null;
+        }
+
         ScanResult scanResult = Data.bleDevicesMap.get(address);
         if (scanResult != null) {
             BluetoothDevice device = scanResult.getDevice();
             bluetoothGatt = device.connectGatt(currentContext, false, gattCallback);
+            Log.d(TAG, "Connecting to " + address);
         }
     }
 
