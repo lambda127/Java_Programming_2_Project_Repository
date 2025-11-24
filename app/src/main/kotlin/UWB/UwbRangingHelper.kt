@@ -27,6 +27,20 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
     init {
         scope.launch {
             Log.d(TAG, "UWB Manager 초기화 시작")
+            
+            // Check UWB System Feature
+            val hasUwbFeature = context.packageManager.hasSystemFeature("android.hardware.uwb")
+            Log.d(TAG, "System has UWB feature: $hasUwbFeature")
+
+            // Check Google Play Services Version
+            try {
+                val pm = context.packageManager
+                val pkgInfo = pm.getPackageInfo("com.google.android.gms", 0)
+                Log.d(TAG, "Google Play Services Version: ${pkgInfo.versionName} (${pkgInfo.longVersionCode})")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get GMS version", e)
+            }
+
             uwbManager = UwbManager.createInstance(context)
             Log.d(TAG, "UWB Manager 초기화 완료")
         }
