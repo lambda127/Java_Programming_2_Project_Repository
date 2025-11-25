@@ -1,8 +1,5 @@
 package Bluetooth;
 
-
-
-
 import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -57,6 +54,15 @@ public class Bluetooth {
         this.uwbParametersListener = listener;
     }
 
+    public interface BluetoothRangingListener {
+        void onBluetoothRssiResult(String deviceName, int rssi, double distance);
+    }
+
+    private BluetoothRangingListener bluetoothRangingListener;
+
+    public void setBluetoothRangingListener(BluetoothRangingListener listener) {
+        this.bluetoothRangingListener = listener;
+    }
 
     private BluetoothManager bluetoothManager;
     private BluetoothAdapter bluetoothAdapter;
@@ -165,9 +171,13 @@ public class Bluetooth {
                 .setConnectable(true) // GATT 연결을 위해 true로 설정
                 .build();
 
-        AdvertiseData data = new AdvertiseData.Builder()
+        AdvertiseData data = Data.isIncludingUuid
+                ? new AdvertiseData.Builder()
                 .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
                 .addServiceUuid(Data.UWB_SERVICE_UUID)
+                .build()
+                : new AdvertiseData.Builder()
+                .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
                 .build();
 
         isAdvertising = true;
@@ -219,8 +229,11 @@ public class Bluetooth {
         }
 
         List<ScanFilter> filters = new ArrayList<>();
-        ScanFilter filter = new ScanFilter.Builder()
+        ScanFilter filter = Data.isIncludingUuid
+                ? new ScanFilter.Builder()
                 .setServiceUuid(Data.UWB_SERVICE_UUID)
+                .build()
+                : new ScanFilter.Builder()
                 .build();
         filters.add(filter);
 
@@ -332,8 +345,10 @@ public class Bluetooth {
                     return;
                 }
                 gatt.discoverServices();
+                startRssiPolling(); // Start polling RSSI when connected
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "GATT Disconnected.");
+                stopRssiPolling(); // Stop polling RSSI when disconnected
                 if (bluetoothGatt != null) {
                     bluetoothGatt.close();
                     bluetoothGatt = null;
@@ -387,7 +402,59 @@ public class Bluetooth {
                 Log.e(TAG, "Characteristic Read Failed: " + status);
             }
         }
+
+        @Override
+        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "Remote RSSI: " + rssi);
+                double distance = calculateDistance(rssi);
+                String deviceName = gatt.getDevice().getName();
+                if (deviceName == null) deviceName = "Unknown Device";
+                
+                if (bluetoothRangingListener != null) {
+                    bluetoothRangingListener.onBluetoothRssiResult(deviceName, rssi, distance);
+                }
+            } else {
+                Log.w(TAG, "onReadRemoteRssi failed: " + status);
+            }
+        }
     };
+
+    private android.os.Handler rssiHandler = new android.os.Handler();
+    private Runnable rssiRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (bluetoothGatt != null) {
+                if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    return;
+                }
+                bluetoothGatt.readRemoteRssi();
+                rssiHandler.postDelayed(this, 1000); // Poll every 1 second
+            }
+        }
+    };
+
+    public void startRssiPolling() {
+        rssiHandler.post(rssiRunnable);
+    }
+
+    public void stopRssiPolling() {
+        rssiHandler.removeCallbacks(rssiRunnable);
+    }
+
+    private double calculateDistance(int rssi) {
+        int txPower = -59; // Hardcoded Tx Power at 1m (adjust as needed)
+        if (rssi == 0) {
+            return -1.0; // if we cannot determine accuracy, return -1.
+        }
+        double ratio = rssi * 1.0 / txPower;
+        if (ratio < 1.0) {
+            return Math.pow(ratio, 10);
+        } else {
+            double distance = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
+            return distance;
+        }
+    }
 
     public void writeUwbAddress(byte[] address) {
         if (bluetoothGatt == null) {
