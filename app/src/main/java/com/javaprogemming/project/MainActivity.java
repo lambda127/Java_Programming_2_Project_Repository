@@ -221,48 +221,6 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         } else {
             // 자동 모드: 바로 시작
             bcl.startGattServer();
-            bcl.startAdvertise();
-            uwbRangingHelper.prepareLocalAddress(false);
-        }
-    }
-
-    // 자동 Ranging 시작
-    private void startAutoRanging() {
-        if (isAutoRangingActive) {
-            updateStatus("이미 Ranging이 진행 중입니다.");
-            return;
-        }
-
-        updateStatus("자동 Ranging 시작 중...");
-        Log.d(TAG, "Starting auto ranging");
-
-        // GATT 서버 시작
-        bcl.startGattServer();
-        // 광고 시작  
-        bcl.startAdvertise();
-        // 로컬 UWB 주소 준비 (Controlee로)
-        uwbRangingHelper.prepareLocalAddress(false);
-
-        isAutoRangingActive = true;
-        updateStatus("광고 중... 연결 대기");
-    }
-
-    // Ranging 중지
-    private void stopAutoRanging() {
-        updateStatus("Ranging 중지 중...");
-        Log.d(TAG, "Stopping auto ranging");
-        
-        uwbRangingHelper.stopRanging();
-        bcl.stopAdvertise();
-        
-        isAutoRangingActive = false;
-        updateStatus("대기 중");
-        
-        // UI 초기화
-        if (rangingResultTextView != null) {
-            runOnUiThread(() -> rangingResultTextView.setText("--"));
-        }
-        if (sessionInfoTextView != null) {
             runOnUiThread(() -> sessionInfoTextView.setText("--"));
         }
     }
@@ -275,6 +233,66 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             }
         });
         Log.d(TAG, "Status: " + status);
+    }
+
+    // 자동 Ranging 시작 및 스캔 로직
+    private void startAutoRanging() {
+        if (isAutoRangingActive) {
+            updateStatus("이미 Ranging이 진행 중입니다.");
+            return;
+        }
+
+        updateStatus("자동 Ranging 시작 중...");
+        Log.d(TAG, "Starting auto ranging");
+
+        // GATT 서버 및 광고 시작
+        bcl.startGattServer();
+        bcl.startAdvertise();
+        // 스캔 시작 (자동 연결을 위해)
+        bcl.startScan();
+        // 로컬 UWB 주소 준비 (Controlee 역할)
+        uwbRangingHelper.prepareLocalAddress(false);
+
+        // 3초 후 첫 번째 디바이스에 자동 연결 시도
+        handler.postDelayed(() -> {
+            if (!Data.bleDeviceList.isEmpty()) {
+                String deviceInfo = Data.bleDeviceList.get(0);
+                // format: "DeviceName\nAA:BB:CC:DD:EE:FF"
+                String[] parts = deviceInfo.split("\\n");
+                if (parts.length >= 2) {
+                    String address = parts[1];
+                    Log.d(TAG, "Auto-connecting to first scanned device: " + address);
+                    bcl.connectToDevice(address);
+                }
+            }
+        }, 3000);
+
+        isAutoRangingActive = true;
+        updateStatus("광고 중... 연결 대기");
+    }
+
+    // 자동 Ranging 중지 로직
+    private void stopAutoRanging() {
+        updateStatus("Ranging 중지 중...");
+        Log.d(TAG, "Stopping auto ranging");
+
+        // 스캔 중지 (필요 시)
+        bcl.stopScan();
+        // Ranging 및 광고 정리
+        uwbRangingHelper.stopRanging();
+        bcl.stopAdvertise();
+        bcl.stopGattServer();
+
+        isAutoRangingActive = false;
+        updateStatus("대기 중");
+
+        // UI 초기화
+        if (rangingResultTextView != null) {
+            runOnUiThread(() -> rangingResultTextView.setText("--"));
+        }
+        if (sessionInfoTextView != null) {
+            runOnUiThread(() -> sessionInfoTextView.setText("--"));
+        }
     }
 
     @Override
