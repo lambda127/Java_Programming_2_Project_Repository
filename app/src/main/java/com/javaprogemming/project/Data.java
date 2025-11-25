@@ -11,7 +11,11 @@ import java.util.UUID;
 
 public class Data {
 
+    //테스트 UI 사용 여부
     public static final boolean isTesting = true;
+
+    //서비스 UUID 포함 여부
+    public static final boolean isIncludingUuid = false;
 
     public static final String UWB_SERVICE_UUID_STRING = "0000FFF0-0000-1000-8000-00805F9B34FB";
     public static final ParcelUuid UWB_SERVICE_UUID = ParcelUuid.fromString(UWB_SERVICE_UUID_STRING);

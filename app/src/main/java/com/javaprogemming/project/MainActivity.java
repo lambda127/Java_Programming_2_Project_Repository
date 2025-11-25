@@ -4,6 +4,7 @@ package com.javaprogemming.project;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+
 import android.os.Handler;
 import android.view.View;
 import android.view.animation.Animation;
@@ -36,7 +37,7 @@ import Bluetooth.Bluetooth;
 import UWB.UwbRangingHelper;
 import UWB.UwbRangingCallback;
 
-public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback {
+public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback, Bluetooth.BluetoothRangingListener {
     private static final String TAG = "UWB_BT_App_Java";
 
 
@@ -207,6 +208,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             return;
         }
         bcl.setUwbParametersListener(this);
+        bcl.setBluetoothRangingListener(this);
 
         // GATT 서버 시작
         bcl.startGattServer();
@@ -284,6 +286,29 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             rangingResultTextView.setText("Ranging Complete");
         });
         Log.d(TAG, "Ranging complete");
+    }
+
+    @Override
+    public void onBluetoothRssiResult(String deviceName, int rssi, double distance) {
+        runOnUiThread(() -> {
+            String currentText = rangingResultTextView.getText().toString();
+            // Avoid overwriting UWB result if possible, or just append
+            // Simple approach: Show both
+            // If text contains "UWB", keep it.
+            String uwbText = "";
+            if (currentText.contains("UWB:")) {
+                 uwbText = currentText.substring(currentText.indexOf("UWB:"));
+            } else if (currentText.contains("m")) {
+                 // Assume existing text is UWB if it has "m" and not "BT"
+                 if (!currentText.contains("BT:")) {
+                     uwbText = "UWB: " + currentText;
+                 }
+            }
+            
+            String btText = String.format("BT(%s): %.2fm (RSSI: %d)", deviceName, distance, rssi);
+            rangingResultTextView.setText(btText + "\n" + uwbText);
+        });
+        Log.d(TAG, "Bluetooth RSSI: " + rssi + ", Distance: " + distance + ", Device: " + deviceName);
     }
 
 
