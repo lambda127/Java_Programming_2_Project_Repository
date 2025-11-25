@@ -49,8 +49,10 @@ dependencies {
     implementation libs.material
     implementation libs.activity
     implementation libs.constraintlayout
-    implementation libs.uwb
-    implementation libs.play.services.nearby
+    implementation project(':custom-uwb-lib')
+    implementation (libs.play.services.nearby) {
+        exclude group: 'androidx.core.uwb'
+    }
 
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit

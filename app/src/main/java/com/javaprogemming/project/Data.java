@@ -15,7 +15,10 @@ public class Data {
     public static final boolean isTesting = true;
 
     //서비스 UUID 포함 여부
-    public static final boolean isIncludingUuid = false;
+    public static final boolean isIncludingUuid = true;
+
+    //Bluetooth Ranging (BR) 활성화 여부
+    public static final boolean isActivatedBR = false;
 
     public static final String UWB_SERVICE_UUID_STRING = "0000FFF0-0000-1000-8000-00805F9B34FB";
     public static final ParcelUuid UWB_SERVICE_UUID = ParcelUuid.fromString(UWB_SERVICE_UUID_STRING);

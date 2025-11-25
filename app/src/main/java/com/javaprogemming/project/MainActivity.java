@@ -37,6 +37,8 @@ import Bluetooth.Bluetooth;
 import UWB.UwbRangingHelper;
 import UWB.UwbRangingCallback;
 
+import androidx.core.uwb.UwbComplexChannel;
+
 public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback, Bluetooth.BluetoothRangingListener {
     private static final String TAG = "UWB_BT_App_Java";
 
@@ -221,35 +223,45 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     @Override
     public void onUwbParametersReceived(byte[] params) {
         Log.d(TAG, "UWB Parameters received: " + Bluetooth.bytesToHex(params));
-        // Assuming 8-byte address and 4-byte session ID
-        if (params.length >= 8) { // Assuming at least 8-byte address
-            byte[] remoteAddress = Arrays.copyOfRange(params, 0, 8);
-            int sessionId = 0; // Default session id
-            if (params.length >= 12) { // if session id is provided
-                sessionId = java.nio.ByteBuffer.wrap(params, 8, 4).getInt();
-            }
-            // We are the controller because we initiated the connection
-            uwbRangingHelper.startRanging(remoteAddress, sessionId, true);
+        
+        if (params == null || params.length < 2) {
+             Log.e(TAG, "Invalid UWB parameters received: too short.");
+             onRangingError("Invalid UWB parameters");
+             return;
+        }
+
+        try {
+            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(params);
+            int addressLength = buffer.get(); // Read length prefix
             
-            // Write our local address to the remote device so they can start ranging too
-            if (localUwbAddress != null) {
-                bcl.writeUwbAddress(localUwbAddress);
+            if (params.length >= 1 + addressLength + 4) {
+                byte[] remoteAddress = new byte[addressLength];
+                buffer.get(remoteAddress);
+                int sessionId = buffer.getInt();
+                
+                Log.d(TAG, "Parsed Remote Address: " + Bluetooth.bytesToHex(remoteAddress) + ", Session ID: " + sessionId);
+
+                // We are the controller because we initiated the connection
+                uwbRangingHelper.startRanging(remoteAddress, sessionId, true, null);
             } else {
-                Log.e(TAG, "Cannot write local address because it is null");
+                Log.e(TAG, "Invalid UWB parameters received: length mismatch. Expected at least " + (1 + addressLength + 4) + ", got " + params.length);
+                onRangingError("Invalid UWB parameters");
             }
-        } else {
-            Log.e(TAG, "Invalid UWB parameters received.");
-            onRangingError("Invalid UWB parameters");
+        } catch (Exception e) {
+            Log.e(TAG, "Error parsing UWB parameters", e);
+            onRangingError("Parsing error");
         }
     }
 
     @Override
-    public void onControllerAddressReceived(byte[] address) {
-        Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address));
+    public void onControllerAddressReceived(byte[] address, int channel, int preambleIndex) {
+        Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address) + ", Ch: " + channel + ", Preamble: " + preambleIndex);
         // We are the controlee (Advertiser)
         // Use the session ID we generated (which the Controller is also using)
         int sessionId = bcl.getSessionId();
-        uwbRangingHelper.startRanging(address, sessionId, false);
+        
+        UwbComplexChannel complexChannel = new UwbComplexChannel(channel, preambleIndex);
+        uwbRangingHelper.startRanging(address, sessionId, false, complexChannel);
     }
 
     @Override
@@ -286,6 +298,19 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             rangingResultTextView.setText("Ranging Complete");
         });
         Log.d(TAG, "Ranging complete");
+    }
+
+    @Override
+    public void onRangingStarted(boolean isController, UwbComplexChannel complexChannel) {
+        Log.d(TAG, "onRangingStarted: isController=" + isController + ", channel=" + complexChannel);
+        if (isController) {
+            // Write our local address AND the assigned complex channel to the remote device
+            if (localUwbAddress != null && complexChannel != null) {
+                bcl.writeUwbAddress(localUwbAddress, complexChannel.getChannel(), complexChannel.getPreambleIndex());
+            } else {
+                Log.e(TAG, "Cannot write local address/channel because it is null");
+            }
+        }
     }
 
     @Override

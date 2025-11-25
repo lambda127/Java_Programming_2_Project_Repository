@@ -1,0 +1,85 @@
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+}
+
+android {
+    namespace 'androidx.core.uwb'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 31
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        aidl true
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+        freeCompilerArgs += ["-Xjvm-default=disable"]
+    }
+}
+
+dependencies {
+
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.androidx.core.ktx
+    testImplementation libs.junit
+    androidTestImplementation libs.ext.junit
+    androidTestImplementation libs.espresso.core
+
+    api libs.kotlin.stdlib
+    api "androidx.annotation:annotation:1.8.1"
+    api libs.core.ktx
+    api libs.kotlin.coroutines.android
+    implementation libs.guava.android
+    implementation 'com.google.android.gms:play-services-base:18.0.1'
+    implementation libs.kotlin.coroutines.play.services
+    implementation 'com.google.android.gms:play-services-nearby:19.2.0', {
+        exclude group: "androidx.core"
+    }
+    androidTestImplementation libs.kotlin.stdlib
+    androidTestImplementation libs.test.ext.junit
+    androidTestImplementation libs.test.core
+    androidTestImplementation libs.test.runner
+    androidTestImplementation libs.test.rules
+    androidTestImplementation libs.truth
+    androidTestImplementation libs.espresso.core
+}
+
+afterEvaluate {
+    tasks.named("compileDebugAidl").configure {
+        doLast {
+            // Fix for "illegal unicode escape" in generated AIDL Java files on Windows
+            // caused by backslashes in the "Using: ..." comment line.
+            def aidlOutputDir = file("build/generated/aidl_source_output_dir/debug/out")
+            if (aidlOutputDir.exists()) {
+                fileTree(dir: aidlOutputDir).include("**/*.java").each { file ->
+                    def content = file.text
+                    // Replace backslashes with forward slashes in the comment block
+                    def newContent = content.replaceAll(/(\*\s*Using:.*)/) { match ->
+                        match[0].replace('\\', '/')
+                    }
+                    if (content != newContent) {
+                        file.text = newContent
+                        println "Sanitized AIDL comment in ${file.name}"
+                    }
+                }
+            }
+        }
+    }
+}

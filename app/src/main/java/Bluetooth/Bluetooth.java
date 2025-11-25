@@ -45,7 +45,7 @@ public class Bluetooth {
 
     public interface UwbParametersListener {
         void onUwbParametersReceived(byte[] params);
-        void onControllerAddressReceived(byte[] address);
+        void onControllerAddressReceived(byte[] address, int channel, int preambleIndex);
     }
 
     private UwbParametersListener uwbParametersListener;
@@ -334,7 +334,6 @@ public class Bluetooth {
         }
     };
 
-
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
@@ -345,7 +344,7 @@ public class Bluetooth {
                     return;
                 }
                 gatt.discoverServices();
-                startRssiPolling(); // Start polling RSSI when connected
+                if(Data.isActivatedBR) startRssiPolling(); // Start polling RSSI when connected
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "GATT Disconnected.");
                 stopRssiPolling(); // Stop polling RSSI when disconnected
@@ -392,11 +391,6 @@ public class Bluetooth {
                     if (uwbParametersListener != null) {
                         uwbParametersListener.onUwbParametersReceived(value);
                     }
-                    // 파라미터 획득 후 GATT 연결 해제
-                    // if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    //    return;
-                    // }
-                    // gatt.disconnect();
                 }
             } else {
                 Log.e(TAG, "Characteristic Read Failed: " + status);
@@ -456,7 +450,7 @@ public class Bluetooth {
         }
     }
 
-    public void writeUwbAddress(byte[] address) {
+    public void writeUwbAddress(byte[] address, int channel, int preambleIndex) {
         if (bluetoothGatt == null) {
             Log.e(TAG, "GATT is not connected.");
             return;
@@ -477,10 +471,19 @@ public class Bluetooth {
             return;
         }
 
-        characteristic.setValue(address);
+        // Format: [Length(1)] + [Address(Var)] + [Channel(4)] + [Preamble(4)]
+        int totalLength = 1 + address.length + 4 + 4;
+        byte[] value = new byte[totalLength];
+        ByteBuffer buffer = ByteBuffer.wrap(value);
+        buffer.put((byte) address.length);
+        buffer.put(address);
+        buffer.putInt(channel);
+        buffer.putInt(preambleIndex);
+
+        characteristic.setValue(value);
         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         boolean success = bluetoothGatt.writeCharacteristic(characteristic);
-        Log.d(TAG, "Write UWB Address initiated: " + success);
+        Log.d(TAG, "Write UWB Address initiated: " + success + ", Payload: " + bytesToHex(value));
     }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
@@ -521,9 +524,11 @@ public class Bluetooth {
                     return;
                 }
 
-                // UWB Address (8 bytes) + Session ID (4 bytes) = 12 bytes
-                byte[] value = new byte[12];
+                // Format: [Length(1)] + [Address(Var)] + [SessionID(4)]
+                int totalLength = 1 + localUwbAddress.length + 4;
+                byte[] value = new byte[totalLength];
                 ByteBuffer buffer = ByteBuffer.wrap(value);
+                buffer.put((byte) localUwbAddress.length);
                 buffer.put(localUwbAddress);
                 buffer.putInt(sessionId);
 
@@ -558,9 +563,24 @@ public class Bluetooth {
                     bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
                 }
 
-                if (value != null && value.length >= 8) {
-                     if (uwbParametersListener != null) {
-                         uwbParametersListener.onControllerAddressReceived(value);
+                if (value != null && value.length > 1) {
+                     try {
+                         ByteBuffer buffer = ByteBuffer.wrap(value);
+                         int addrLen = buffer.get(); // Read length prefix
+                         if (value.length >= 1 + addrLen + 8) {
+                             byte[] address = new byte[addrLen];
+                             buffer.get(address);
+                             int channel = buffer.getInt();
+                             int preambleIndex = buffer.getInt();
+
+                             if (uwbParametersListener != null) {
+                                 uwbParametersListener.onControllerAddressReceived(address, channel, preambleIndex);
+                             }
+                         } else {
+                             Log.w(TAG, "GATT Server: Received invalid payload length.");
+                         }
+                     } catch (Exception e) {
+                         Log.e(TAG, "GATT Server: Error parsing write request", e);
                      }
                 }
             } else {
@@ -570,7 +590,6 @@ public class Bluetooth {
             }
         }
     };
-
 
     public boolean getScanning(){
         return isScanning;

@@ -17,6 +17,7 @@ interface UwbRangingCallback {
     fun onRangingResult(distance: Float)
     fun onRangingError(error: String)
     fun onRangingComplete()
+    fun onRangingStarted(isController: Boolean, complexChannel: UwbComplexChannel?)
 }
 
 class UwbRangingHelper(private val context: Context, private val callback: UwbRangingCallback) {
@@ -76,8 +77,8 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
     }
 
     // 2단계: Ranging 시작
-    fun startRanging(remoteAddress: ByteArray, sessionId: Int, isController: Boolean) {
-        Log.d(TAG, "startRanging 호출됨 - remoteAddress: ${remoteAddress.joinToString { "%02X".format(it) }}, sessionId: $sessionId, isController: $isController")
+    fun startRanging(remoteAddress: ByteArray, sessionId: Int, isController: Boolean, complexChannel: UwbComplexChannel? = null) {
+        Log.d(TAG, "startRanging 호출됨 - remoteAddress: ${remoteAddress.joinToString { "%02X".format(it) }}, sessionId: $sessionId, isController: $isController, complexChannel: $complexChannel")
         stopRanging()
 
         rangingJob = scope.launch {
@@ -101,13 +102,28 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                 var sessionKey = "12345678".toByteArray()
                 // Removed Android 13 byte reversal logic for sessionKey
 
+                // Controller인 경우 세션 스코프에서 채널 정보를 가져와서 콜백으로 전달
+                if (isController && sessionScope is UwbControllerSessionScope) {
+                     val localComplexChannel = sessionScope.uwbComplexChannel
+                     Log.d(TAG, "Controller complex channel: $localComplexChannel (Channel: ${localComplexChannel.channel}, Preamble: ${localComplexChannel.preambleIndex})")
+                     callback.onRangingStarted(true, localComplexChannel)
+                } else if (!isController) {
+                     // Controlee인 경우 전달받은 채널 정보 사용
+                     if (complexChannel != null) {
+                         Log.d(TAG, "Controlee using complex channel: $complexChannel (Channel: ${complexChannel.channel}, Preamble: ${complexChannel.preambleIndex})")
+                         callback.onRangingStarted(false, complexChannel)
+                     } else {
+                         Log.w(TAG, "Controlee이지만 complexChannel이 null입니다.")
+                     }
+                }
+
                 val parameters = RangingParameters(
                     uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
                     sessionId = sessionId,
                     subSessionId = 0,
                     sessionKeyInfo = sessionKey,
                     subSessionKeyInfo = null,
-                    complexChannel = null,
+                    complexChannel = complexChannel, // Controlee needs this
                     peerDevices = listOf(partnerDevice),
                     updateRateType = RangingParameters.RANGING_UPDATE_RATE_AUTOMATIC
                 )
