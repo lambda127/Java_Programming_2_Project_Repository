@@ -7,7 +7,9 @@ import androidx.core.uwb.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 
 // Java로 결과를 전달하기 위한 인터페이스
 interface UwbRangingCallback {
@@ -102,7 +104,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                 val parameters = RangingParameters(
                     uwbConfigType = RangingParameters.CONFIG_UNICAST_DS_TWR,
                     sessionId = sessionId,
+                    subSessionId = 0,
                     sessionKeyInfo = sessionKey,
+                    subSessionKeyInfo = null,
                     complexChannel = null,
                     peerDevices = listOf(partnerDevice),
                     updateRateType = RangingParameters.RANGING_UPDATE_RATE_AUTOMATIC
@@ -111,7 +115,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                 Log.d(TAG, "Ranging session 준비 중... Parameters: $parameters")
                 try {
                     sessionScope.prepareSession(parameters)
+                        .onStart { Log.d(TAG, "Ranging Flow 시작됨 (Thread: ${Thread.currentThread().name})") }
                         .onEach { result ->
+                            Log.v(TAG, "Ranging 결과 수신: $result")
                             when(result) {
                                 is RangingResult.RangingResultPosition -> {
                                     val distance = result.position.distance
@@ -133,8 +139,15 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                             }
                         }
                         .catch { e ->
-                            Log.e(TAG, "Ranging flow에서 오류 발생", e)
+                            Log.e(TAG, "Ranging flow에서 오류 발생 (Thread: ${Thread.currentThread().name})", e)
+                            if (e is RuntimeException) {
+                                Log.e(TAG, "RuntimeException Details: ${e.message}")
+                                e.stackTrace.take(5).forEach { Log.e(TAG, "  at $it") }
+                            }
                             callback.onRangingError("Ranging flow error: ${e.message}")
+                        }
+                        .onCompletion { cause ->
+                            Log.d(TAG, "Ranging Flow 종료됨. Cause: $cause")
                         }
                         .launchIn(this)
                     Log.d(TAG, "Ranging session 시작됨")
