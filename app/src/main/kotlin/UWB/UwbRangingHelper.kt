@@ -144,6 +144,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                                         Log.d(TAG, "Ranging 결과에 거리가 포함되지 않음")
                                     }
                                 }
+                                is RangingResult.RangingResultInitialized -> {
+                                    Log.i(TAG, "Ranging 세션 초기화 완료, 거리 측정 준비됨")
+                                }
                                 is RangingResult.RangingResultPeerDisconnected -> {
                                     Log.w(TAG, "상대방 연결 끊김")
                                     callback.onRangingError("Peer disconnected")
