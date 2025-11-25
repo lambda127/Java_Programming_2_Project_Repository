@@ -1,38 +1,181 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="16dp"
-    tools:context=".MainActivity">
+    android:background="#F5F5F5">
 
-    <Button
-        android:id="@+id/scanButton"
+    <!-- 타이틀 -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start Scan" />
+        android:text="UWB Auto Ranging Test"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:textColor="#1976D2"
+        android:gravity="center"
+        android:paddingTop="16dp"
+        android:paddingBottom="24dp"/>
 
-    <ListView
-        android:id="@+id/deviceListView"
+    <!-- 상태 표시 -->
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
-    <TextView
-        android:id="@+id/rangingResultTextView"
-        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Ranging Result: "
-        android:textSize="18sp" />
+        android:layout_marginBottom="16dp"
+        android:elevation="4dp">
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="현재 상태"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:paddingBottom="8dp"/>
+            
+            <TextView
+                android:id="@+id/statusTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="준비 중..."
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#333333"/>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
-    <TextView
-        android:id="@+id/localAddressTextView"
-        android:layout_width="wrap_content"
+    <!-- 거리 측정 결과 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Local UWB Address: "
-        android:textSize="18sp" />
+        android:layout_marginBottom="16dp"
+        android:elevation="4dp">
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="UWB 거리 측정"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:paddingBottom="8dp"/>
+            
+            <TextView
+                android:id="@+id/rangingResultTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textSize="32sp"
+                android:textStyle="bold"
+                android:textColor="#4CAF50"
+                android:gravity="center"/>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- 로컬 UWB 주소 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:elevation="4dp">
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="로컬 UWB 주소"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:paddingBottom="8dp"/>
+            
+            <TextView
+                android:id="@+id/localAddressTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:fontFamily="monospace"/>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- 세션 정보 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:elevation="4dp">
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="세션 정보"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:paddingBottom="8dp"/>
+            
+            <TextView
+                android:id="@+id/sessionInfoTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:fontFamily="monospace"/>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- 버튼 영역 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+        
+        <Button
+            android:id="@+id/startAutoRangingButton"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="시작"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:backgroundTint="#4CAF50"/>
+        
+        <Button
+            android:id="@+id/stopRangingButton"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="중지"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:backgroundTint="#F44336"/>
+    </LinearLayout>
 
 </LinearLayout>

@@ -48,11 +48,16 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     private byte[] localUwbAddress;
 
     private Button scanButton;
+    private Button startAutoRangingButton;
+    private Button stopRangingButton;
     private ListView deviceListView;
     private TextView rangingResultTextView;
     private TextView localAddressTextView;
+    private TextView statusTextView;
+    private TextView sessionInfoTextView;
 
     private ArrayAdapter<String> bleDeviceAdapter;
+    private boolean isAutoRangingActive = false;
 
     ///
     private View overlay;
@@ -114,21 +119,19 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     }
 
     private void testUiSetting(){
-        scanButton = findViewById(R.id.scanButton);
-        deviceListView = findViewById(R.id.deviceListView);
+        startAutoRangingButton = findViewById(R.id.startAutoRangingButton);
+        stopRangingButton = findViewById(R.id.stopRangingButton);
+        statusTextView = findViewById(R.id.statusTextView);
         rangingResultTextView = findViewById(R.id.rangingResultTextView);
         localAddressTextView = findViewById(R.id.localAddressTextView);
+        sessionInfoTextView = findViewById(R.id.sessionInfoTextView);
 
-        deviceListView.setAdapter(bleDeviceAdapter);
-
-        deviceListView.setOnItemClickListener((parent, view, position, id) -> {
-            String deviceInfo = (String) parent.getItemAtPosition(position);
-            String address = deviceInfo.split("\n")[1];
-            bcl.connectToDevice(address);
+        startAutoRangingButton.setOnClickListener(v -> {
+            startAutoRanging();
         });
 
-        scanButton.setOnClickListener(v -> {
-            bcl.startScan();
+        stopRangingButton.setOnClickListener(v -> {
+            stopAutoRanging();
         });
     }
 
@@ -212,12 +215,66 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         bcl.setUwbParametersListener(this);
         bcl.setBluetoothRangingListener(this);
 
+        if (Data.isTesting) {
+            // 테스트 모드: 버튼을 누를 때까지 대기
+            updateStatus("준비 완료. 시작 버튼을 누르세요.");
+        } else {
+            // 자동 모드: 바로 시작
+            bcl.startGattServer();
+            bcl.startAdvertise();
+            uwbRangingHelper.prepareLocalAddress(false);
+        }
+    }
+
+    // 자동 Ranging 시작
+    private void startAutoRanging() {
+        if (isAutoRangingActive) {
+            updateStatus("이미 Ranging이 진행 중입니다.");
+            return;
+        }
+
+        updateStatus("자동 Ranging 시작 중...");
+        Log.d(TAG, "Starting auto ranging");
+
         // GATT 서버 시작
         bcl.startGattServer();
-        // 광고 시작
+        // 광고 시작  
         bcl.startAdvertise();
-        // 로컬 UWB 주소 미리 가져오기
-        uwbRangingHelper.prepareLocalAddress(false); // We can be a controlee
+        // 로컬 UWB 주소 준비 (Controlee로)
+        uwbRangingHelper.prepareLocalAddress(false);
+
+        isAutoRangingActive = true;
+        updateStatus("광고 중... 연결 대기");
+    }
+
+    // Ranging 중지
+    private void stopAutoRanging() {
+        updateStatus("Ranging 중지 중...");
+        Log.d(TAG, "Stopping auto ranging");
+        
+        uwbRangingHelper.stopRanging();
+        bcl.stopAdvertise();
+        
+        isAutoRangingActive = false;
+        updateStatus("대기 중");
+        
+        // UI 초기화
+        if (rangingResultTextView != null) {
+            runOnUiThread(() -> rangingResultTextView.setText("--"));
+        }
+        if (sessionInfoTextView != null) {
+            runOnUiThread(() -> sessionInfoTextView.setText("--"));
+        }
+    }
+
+    // 상태 업데이트
+    private void updateStatus(String status) {
+        runOnUiThread(() -> {
+            if (statusTextView != null) {
+                statusTextView.setText(status);
+            }
+        });
+        Log.d(TAG, "Status: " + status);
     }
 
     @Override
