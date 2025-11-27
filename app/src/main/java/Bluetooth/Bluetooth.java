@@ -469,6 +469,7 @@ public class Bluetooth {
             return;
         }
 
+
         // Format: [Length(1)] + [Address(Var)] + [Channel(4)] + [Preamble(4)]
         int totalLength = 1 + address.length + 4 + 4;
         byte[] value = new byte[totalLength];
@@ -481,7 +482,7 @@ public class Bluetooth {
         characteristic.setValue(value);
         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         boolean success = bluetoothGatt.writeCharacteristic(characteristic);
-        Log.d(TAG, "Write UWB Address initiated: " + success + ", Payload: " + bytesToHex(value));
+        Log.d(TAG, "Write UWB Address initiated: " + success + ", Payload: " + bytesToHex(value) + " (Ch: " + channel + ", Preamble: " + preambleIndex + ")");
     }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {

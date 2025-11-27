@@ -90,20 +90,28 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     Log.e(TAG, "startRanging: UwbManager가 null입니다.")
                     return@launch
                 }
+
                 val sessionScope = if (isController) {
                     manager.controllerSessionScope()
                 } else {
                     manager.controleeSessionScope()
                 }
 
-                // Removed Android 13 byte reversal logic for remoteAddress
-                val partnerAddressBytes = remoteAddress
+                // Conditional address reversal for Android 13 (API 33) and below
+                val partnerAddressBytes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) {
+                    Log.d(TAG, "Android 13 or lower detected (SDK ${Build.VERSION.SDK_INT}). Reversing remote address bytes.")
+                    remoteAddress.reversedArray()
+                } else {
+                    Log.d(TAG, "Android 14 or higher detected (SDK ${Build.VERSION.SDK_INT}). Using original remote address bytes.")
+                    remoteAddress
+                }
+                Log.d(TAG, "Using remote address: ${partnerAddressBytes.joinToString { "%02X".format(it) }} (Original: ${remoteAddress.joinToString { "%02X".format(it) }})")
+
                 val partnerAddress = UwbAddress(partnerAddressBytes)
                 val partnerDevice = UwbDevice.createForAddress(partnerAddress.address)
 
                 // 8바이트 세션 키를 생성합니다.
                 var sessionKey = "12345678".toByteArray()
-                // Removed Android 13 byte reversal logic for sessionKey
 
                 // Controller인 경우 세션 스코프에서 채널 정보를 가져와서 콜백으로 전달
                 if (isController && sessionScope is UwbControllerSessionScope) {
