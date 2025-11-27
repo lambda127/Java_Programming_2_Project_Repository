@@ -314,23 +314,30 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 buffer.get(remoteAddress);
                 int sessionId = buffer.getInt();
                 
-                Log.d(TAG, "Parsed Remote Address: " + Bluetooth.bytesToHex(remoteAddress) + ", Session ID: " + sessionId);
+                if (uwbRangingHelper.isRanging()) {
+                    Log.w(TAG, "Already ranging. Ignoring UWB parameters.");
+                    return;
+                }
 
-                // We are the controller because we initiated the connection
                 uwbRangingHelper.startRanging(remoteAddress, sessionId, true, null);
             } else {
-                Log.e(TAG, "Invalid UWB parameters received: length mismatch. Expected at least " + (1 + addressLength + 4) + ", got " + params.length);
-                onRangingError("Invalid UWB parameters");
+                onRangingError("Parsing error");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing UWB parameters", e);
-            onRangingError("Parsing error");
+            onRangingError("Parsing exception: " + e.getMessage());
         }
     }
 
     @Override
     public void onControllerAddressReceived(byte[] address, int channel, int preambleIndex) {
         Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address) + ", Ch: " + channel + ", Preamble: " + preambleIndex);
+        
+        if (uwbRangingHelper.isRanging()) {
+            Log.w(TAG, "Already ranging. Ignoring controller address.");
+            return;
+        }
+
         // We are the controlee (Advertiser)
         // Use the session ID we generated (which the Controller is also using)
         int sessionId = bcl.getSessionId();

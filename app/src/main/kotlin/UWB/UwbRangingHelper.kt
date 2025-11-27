@@ -27,6 +27,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
     private var rangingJob: Job? = null
     private val TAG = "UwbRangingHelper"
 
+    val isRanging: Boolean
+        get() = rangingJob?.isActive == true
+
     init {
         scope.launch {
             Log.d(TAG, "UWB Manager 초기화 시작")

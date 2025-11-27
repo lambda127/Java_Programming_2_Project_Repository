@@ -245,8 +245,6 @@ public class Bluetooth {
         bluetoothLeScanner.startScan(filters, settings, leScanCallback);
         Log.d(TAG, "BLE Scan started.");
 
-        // Stop scan after 10 seconds
-        new android.os.Handler().postDelayed(this::stopScan, 10000);
     }
 
     public void stopScan() {
