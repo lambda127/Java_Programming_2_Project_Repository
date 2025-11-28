@@ -314,10 +314,10 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 buffer.get(remoteAddress);
                 int sessionId = buffer.getInt();
                 
-                if (uwbRangingHelper.isRanging()) {
-                    Log.w(TAG, "Already ranging. Ignoring UWB parameters.");
-                    return;
-                }
+                /// if (uwbRangingHelper.isRanging()) {
+                ///                     Log.w(TAG, "Already ranging. Ignoring UWB parameters.");
+                ///                     return;
+                ///                 }
 
                 // We are the Controller (Scanner/GATT Client)
                 // We should use OUR Session ID to ensure consistency.
