@@ -104,6 +104,7 @@ public class Bluetooth {
 
     private boolean isScanning = false;
     private boolean isAdvertising = false;
+    private boolean isAdvertisingRequested = false;
     private boolean controllerMode = true;
     private final Handler advertiseHandler = new Handler(Looper.getMainLooper());
     private Runnable pendingAdvertiseTask;
@@ -178,7 +179,7 @@ public class Bluetooth {
 
 
     public void startAdvertise(){
-        if(isAdvertising) {
+        if(isAdvertising || isAdvertisingRequested) {
             Log.d(TAG, "startAdvertise skipped: already advertising");
             return;
         }
@@ -203,12 +204,14 @@ public class Bluetooth {
                 .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
                 .build();
 
+        isAdvertisingRequested = true;
         try {
             bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback);
             Log.d("BLE", "Advertising 시작 요청: " + Data.UWB_SERVICE_UUID.getUuid().toString());
         }
         catch (SecurityException e) {
             Log.e("BLE", "권한 부족: " + e.getMessage());
+            isAdvertisingRequested = false;
         }
     }
 
@@ -219,6 +222,7 @@ public class Bluetooth {
             return;
         }
         isAdvertising = false;
+        isAdvertisingRequested = false;
         cancelPendingAdvertiseRestart();
         bluetoothLeAdvertiser.stopAdvertising(advertiseCallback);
         Log.d(TAG, "BLE Advertise stopped.");
@@ -234,7 +238,7 @@ public class Bluetooth {
             Log.d(TAG, "Restarting advertise after backoff");
             startAdvertise();
         };
-        advertiseHandler.postDelayed(pendingAdvertiseTask, 1500);
+        advertiseHandler.postDelayed(pendingAdvertiseTask, 3000);
     }
 
     private void cancelPendingAdvertiseRestart() {
@@ -249,6 +253,7 @@ public class Bluetooth {
         public void onStartSuccess(AdvertiseSettings settingsInEffect) {
             super.onStartSuccess(settingsInEffect);
             isAdvertising = true;
+            isAdvertisingRequested = false;
             cancelPendingAdvertiseRestart();
             Log.d("BLE", "Advertising 성공!");
         }
@@ -257,6 +262,7 @@ public class Bluetooth {
         public void onStartFailure(int errorCode) {
             super.onStartFailure(errorCode);
             isAdvertising = false;
+            isAdvertisingRequested = false;
             scheduleAdvertiseRestart();
             Log.e("BLE", "Advertising 실패 에러코드: " + errorCode);
         }

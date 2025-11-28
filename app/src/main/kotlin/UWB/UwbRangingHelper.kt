@@ -158,6 +158,12 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                                         Log.d(TAG, "Ranging 결과에 거리가 포함되지 않음")
                                     }
                                 }
+                                is RangingResult.RangingResultMeasurement -> {
+                                    val now = System.currentTimeMillis()
+                                    val elapsed = now - lastResultTimestamp
+                                    lastResultTimestamp = now
+                                    Log.d(TAG, "Measurement result: $result (elapsed=${elapsed}ms)")
+                                }
                                 is RangingResult.RangingResultInitialized -> {
                                     Log.i(TAG, "Ranging 세션 초기화 완료, 거리 측정 준비됨")
                                 }
