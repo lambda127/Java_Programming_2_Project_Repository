@@ -58,6 +58,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
 
     private ArrayAdapter<String> bleDeviceAdapter;
     private boolean isAutoRangingActive = false;
+    private boolean isRunningAsController = false;
 
     ///
     private View overlay;
@@ -314,11 +315,6 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 buffer.get(remoteAddress);
                 int sessionId = buffer.getInt();
                 
-                /// if (uwbRangingHelper.isRanging()) {
-                ///                     Log.w(TAG, "Already ranging. Ignoring UWB parameters.");
-                ///                     return;
-                ///                 }
-
                 // We are the Controller (Scanner/GATT Client)
                 // We should use OUR Session ID to ensure consistency.
                 // The Controlee might have sent a session ID, but we override it with ours
@@ -326,6 +322,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 int localSessionId = bcl.getSessionId();
                 Log.d(TAG, "Controller using local Session ID: " + localSessionId + " (Remote sent: " + sessionId + ")");
 
+                isRunningAsController = true;
                 uwbRangingHelper.startRanging(remoteAddress, localSessionId, true, null);
             } else {
                 onRangingError("Parsing error");
@@ -341,20 +338,49 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address) + ", Ch: " + channel + ", Preamble: " + preambleIndex + ", SessionId: " + sessionId);
         
         if (uwbRangingHelper.isRanging()) {
-            Log.w(TAG, "Already ranging. Ignoring controller address.");
-            return;
+            if (!isRunningAsController) {
+                Log.w(TAG, "Already ranging as Controlee. Ignoring new controller address.");
+                return;
+            }
+
+            // We are currently ranging as Controller.
+            // Check for tie-breaker: Yield to higher address.
+            if (localUwbAddress == null) return;
+
+            boolean remoteIsHigher = false;
+            int len = Math.min(localUwbAddress.length, address.length);
+            for (int i = 0; i < len; i++) {
+                int localByte = localUwbAddress[i] & 0xFF;
+                int remoteByte = address[i] & 0xFF;
+                if (remoteByte > localByte) {
+                    remoteIsHigher = true;
+                    break;
+                } else if (remoteByte < localByte) {
+                    remoteIsHigher = false;
+                    break;
+                }
+            }
+
+            if (remoteIsHigher) {
+                Log.i(TAG, "Race condition: Remote address is higher. Yielding and becoming Controlee.");
+                uwbRangingHelper.stopRanging();
+                // Proceed to start as Controlee below
+            } else {
+                Log.w(TAG, "Race condition: Local address is higher. Ignoring remote controller request.");
+                return;
+            }
         }
 
         // We are the controlee (Advertiser)
         // Use the session ID received from the Controller
         
         UwbComplexChannel complexChannel = new UwbComplexChannel(channel, preambleIndex);
+        isRunningAsController = false;
         uwbRangingHelper.startRanging(address, sessionId, false, complexChannel);
     }
 
     @Override
     public void onLocalAddressReceived(byte[] address) {
-        // GATT 서버에 로컬 UWB 주소 설정
         bcl.setLocalUwbAddress(address);
         this.localUwbAddress = address;
 
@@ -492,7 +518,3 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         bcl.stopGattServer();
     }
 }
-
-
-
-
