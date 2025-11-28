@@ -68,7 +68,7 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     Log.d(TAG, "Controlee session scope 생성 중")
                     manager.controleeSessionScope()
                 }
-                var addressBytes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) sessionScope.localAddress.address.reversedArray() else sessionScope.localAddress.address
+                var addressBytes = sessionScope.localAddress.address.reversedArray()
                 Log.d(TAG, "로컬 주소 수신: ${addressBytes.joinToString { "%02X".format(it) }}")
                 callback.onLocalAddressReceived(addressBytes)
             } catch (e: Exception) {
@@ -96,14 +96,8 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     manager.controleeSessionScope()
                 }
 
-                // Conditional address reversal for Android 13 (API 33) and below
-                val partnerAddressBytes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) {
-                    Log.d(TAG, "Android 13 or lower detected (SDK ${Build.VERSION.SDK_INT}). Reversing remote address bytes.")
-                    remoteAddress.reversedArray()
-                } else {
-                    Log.d(TAG, "Android 14 or higher detected (SDK ${Build.VERSION.SDK_INT}). Using original remote address bytes.")
-                    remoteAddress
-                }
+                // Always reverse address bytes for compatibility
+                val partnerAddressBytes = remoteAddress.reversedArray()
                 Log.d(TAG, "Using remote address: ${partnerAddressBytes.joinToString { "%02X".format(it) }} (Original: ${remoteAddress.joinToString { "%02X".format(it) }})")
 
                 val partnerAddress = UwbAddress(partnerAddressBytes)
