@@ -2,6 +2,7 @@ package com.javaprogemming.project;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.ScanResult;
+import android.os.Build;
 import android.os.ParcelUuid;
 
 import java.util.ArrayList;
@@ -19,6 +20,13 @@ public class Data {
 
     //Bluetooth Ranging (BR) 활성화 여부
     public static final boolean isActivatedBR = false;
+
+    // Android 16(API 36) 이상 기기는 Controller, 그보다 낮으면 Controlee로 고정한다.
+    private static final int CONTROLLER_MIN_API_LEVEL = 36;
+
+    public static boolean isControllerDevice() {
+        return Build.VERSION.SDK_INT >= CONTROLLER_MIN_API_LEVEL;
+    }
 
     public static final String UWB_SERVICE_UUID_STRING = "0000FFF0-0000-1000-8000-00805F9B34FB";
     public static final ParcelUuid UWB_SERVICE_UUID = ParcelUuid.fromString(UWB_SERVICE_UUID_STRING);

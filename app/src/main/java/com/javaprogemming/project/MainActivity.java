@@ -220,9 +220,16 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             // 테스트 모드: 버튼을 누를 때까지 대기
             updateStatus("준비 완료. 시작 버튼을 누르세요.");
         } else {
-            // 자동 모드: 바로 시작
-            bcl.startGattServer();
-            runOnUiThread(() -> sessionInfoTextView.setText("--"));
+            // 자동 모드: 역할에 따라 즉시 준비
+            if (!Data.isControllerDevice()) {
+                bcl.startGattServer();
+                bcl.startAdvertise();
+            }
+            runOnUiThread(() -> {
+                if (sessionInfoTextView != null) {
+                    sessionInfoTextView.setText("--");
+                }
+            });
         }
     }
 
@@ -243,33 +250,35 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             return;
         }
 
-        updateStatus("자동 Ranging 시작 중...");
+        isAutoRangingActive = true;
         Log.d(TAG, "Starting auto ranging");
 
-        // GATT 서버 및 광고 시작
-        bcl.startGattServer();
-        bcl.startAdvertise();
-        // 스캔 시작 (자동 연결을 위해)
-        bcl.startScan();
-        // 로컬 UWB 주소 준비 (Controlee 역할)
-        uwbRangingHelper.prepareLocalAddress(false);
+        if (Data.isControllerDevice()) {
+            updateStatus("컨트롤러: 스캔 중...");
+            // 컨트롤러는 스캔/연결만 수행
+            bcl.startScan();
+            uwbRangingHelper.prepareLocalAddress(true);
 
-        // 3초 후 첫 번째 디바이스에 자동 연결 시도
-        handler.postDelayed(() -> {
-            if (!Data.bleDeviceList.isEmpty()) {
-                String deviceInfo = Data.bleDeviceList.get(0);
-                // format: "DeviceName\nAA:BB:CC:DD:EE:FF"
-                String[] parts = deviceInfo.split("\\n");
-                if (parts.length >= 2) {
-                    String address = parts[1];
-                    Log.d(TAG, "Auto-connecting to first scanned device: " + address);
-                    bcl.connectToDevice(address);
+            handler.postDelayed(() -> {
+                if (!Data.bleDeviceList.isEmpty()) {
+                    String deviceInfo = Data.bleDeviceList.get(0);
+                    String[] parts = deviceInfo.split("\\n");
+                    if (parts.length >= 2) {
+                        String address = parts[1];
+                        Log.d(TAG, "Auto-connecting to first scanned device: " + address);
+                        bcl.connectToDevice(address);
+                    }
+                } else {
+                    Log.w(TAG, "No BLE devices found yet while acting as Controller.");
                 }
-            }
-        }, 3000);
-
-        isAutoRangingActive = true;
-        updateStatus("광고 중... 연결 대기");
+            }, 3000);
+        } else {
+            updateStatus("콘트롤리: 광고 중...");
+            // Controlee는 광고/GATT 서버만 유지
+            bcl.startGattServer();
+            bcl.startAdvertise();
+            uwbRangingHelper.prepareLocalAddress(false);
+        }
     }
 
     // 자동 Ranging 중지 로직
@@ -315,6 +324,12 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                 buffer.get(remoteAddress);
                 int sessionId = buffer.getInt();
                 
+                // Check if we are already ranging (e.g. as Controlee)
+                if (uwbRangingHelper.isRanging()) {
+                    Log.w(TAG, "Already ranging. Ignoring UWB parameters to avoid role conflict.");
+                    return;
+                }
+
                 // We are the Controller (Scanner/GATT Client)
                 // We should use OUR Session ID to ensure consistency.
                 // The Controlee might have sent a session ID, but we override it with ours
