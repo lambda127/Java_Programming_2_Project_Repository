@@ -68,8 +68,7 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     Log.d(TAG, "Controlee session scope 생성 중")
                     manager.controleeSessionScope()
                 }
-                var addressBytes = sessionScope.localAddress.address
-                // Removed Android 13 byte reversal logic
+                var addressBytes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) sessionScope.localAddress.address.reversedArray() else sessionScope.localAddress.address
                 Log.d(TAG, "로컬 주소 수신: ${addressBytes.joinToString { "%02X".format(it) }}")
                 callback.onLocalAddressReceived(addressBytes)
             } catch (e: Exception) {
