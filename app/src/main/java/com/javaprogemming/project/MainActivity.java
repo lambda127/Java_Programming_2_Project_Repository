@@ -319,7 +319,14 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
                     return;
                 }
 
-                uwbRangingHelper.startRanging(remoteAddress, sessionId, true, null);
+                // We are the Controller (Scanner/GATT Client)
+                // We should use OUR Session ID to ensure consistency.
+                // The Controlee might have sent a session ID, but we override it with ours
+                // because we will send OUR Session ID to the Controlee in the write request.
+                int localSessionId = bcl.getSessionId();
+                Log.d(TAG, "Controller using local Session ID: " + localSessionId + " (Remote sent: " + sessionId + ")");
+
+                uwbRangingHelper.startRanging(remoteAddress, localSessionId, true, null);
             } else {
                 onRangingError("Parsing error");
             }

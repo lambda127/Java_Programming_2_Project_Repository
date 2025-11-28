@@ -68,7 +68,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     Log.d(TAG, "Controlee session scope 생성 중")
                     manager.controleeSessionScope()
                 }
-                var addressBytes = sessionScope.localAddress.address.reversedArray()
+                
+                // Use address bytes directly (assuming GMS update fixed the reversal issue)
+                var addressBytes = sessionScope.localAddress.address
                 Log.d(TAG, "로컬 주소 수신: ${addressBytes.joinToString { "%02X".format(it) }}")
                 callback.onLocalAddressReceived(addressBytes)
             } catch (e: Exception) {
@@ -96,9 +98,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     manager.controleeSessionScope()
                 }
 
-                // Always reverse address bytes for compatibility
-                val partnerAddressBytes = remoteAddress.reversedArray()
-                Log.d(TAG, "Using remote address: ${partnerAddressBytes.joinToString { "%02X".format(it) }} (Original: ${remoteAddress.joinToString { "%02X".format(it) }})")
+                // Use address bytes directly (assuming GMS update fixed the reversal issue)
+                val partnerAddressBytes = remoteAddress
+                Log.d(TAG, "Using remote address: ${partnerAddressBytes.joinToString { "%02X".format(it) }}")
 
                 val partnerAddress = UwbAddress(partnerAddressBytes)
                 val partnerDevice = UwbDevice.createForAddress(partnerAddress.address)
