@@ -96,11 +96,16 @@ public class Bluetooth {
 
     private boolean isScanning = false;
     private boolean isAdvertising = false;
+    private boolean controllerMode = true;
 
     public void setBleDeviceAdapter(ArrayAdapter<String> adapter, ArrayList<String> deviceList) {
         this.bleDeviceAdapter = adapter;
         Data.bleDeviceList.clear();
         Data.bleDeviceList.addAll(deviceList);
+    }
+
+    public void setControllerMode(boolean isController) {
+        this.controllerMode = isController;
     }
 
     public void setLocalUwbAddress(byte[] address) {
@@ -274,6 +279,9 @@ public class Bluetooth {
         ScanResult scanResult = Data.bleDevicesMap.get(address);
         if (scanResult != null) {
             BluetoothDevice device = scanResult.getDevice();
+            if (controllerMode) {
+                stopScan();
+            }
             bluetoothGatt = device.connectGatt(currentContext, false, gattCallback);
             Log.d(TAG, "Connecting to " + address);
         }
@@ -338,6 +346,9 @@ public class Bluetooth {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "GATT Connected. Discovering services...");
                 bluetoothGatt = gatt;
+                if (controllerMode) {
+                    stopScan();
+                }
                 if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                     return;
                 }
@@ -492,8 +503,14 @@ public class Bluetooth {
             super.onConnectionStateChange(device, status, newState);
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "GATT Server: Device Connected - " + device.getAddress());
+                if (!controllerMode) {
+                    stopAdvertise();
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "GATT Server: Device Disconnected - " + device.getAddress());
+                if (!controllerMode) {
+                    startAdvertise();
+                }
             }
         }
 

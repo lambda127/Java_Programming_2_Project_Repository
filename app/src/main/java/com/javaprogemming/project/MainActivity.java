@@ -105,6 +105,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         /// Ranging을 위한 기본 세팅
 
         bcl = new Bluetooth(this);
+        bcl.setControllerMode(Data.isControllerDevice());
 
         bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, Data.bleDeviceList);
 
@@ -252,6 +253,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
 
         isAutoRangingActive = true;
         Log.d(TAG, "Starting auto ranging");
+        bcl.setControllerMode(Data.isControllerDevice());
 
         if (Data.isControllerDevice()) {
             updateStatus("컨트롤러: 스캔 중...");
