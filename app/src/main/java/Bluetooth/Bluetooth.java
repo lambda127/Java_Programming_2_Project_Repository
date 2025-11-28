@@ -1,7 +1,6 @@
 package Bluetooth;
 
 import android.Manifest;
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -25,6 +24,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.widget.ArrayAdapter;
 
@@ -64,6 +65,13 @@ public class Bluetooth {
         this.bluetoothRangingListener = listener;
     }
 
+    public interface ConnectionStateListener {
+        void onBleConnected();
+        void onBleDisconnected();
+    }
+
+    private ConnectionStateListener connectionStateListener;
+
     private BluetoothManager bluetoothManager;
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothLeScanner bluetoothLeScanner;
@@ -97,6 +105,8 @@ public class Bluetooth {
     private boolean isScanning = false;
     private boolean isAdvertising = false;
     private boolean controllerMode = true;
+    private final Handler advertiseHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingAdvertiseTask;
 
     public void setBleDeviceAdapter(ArrayAdapter<String> adapter, ArrayList<String> deviceList) {
         this.bleDeviceAdapter = adapter;
@@ -117,6 +127,10 @@ public class Bluetooth {
         return sessionId;
     }
 
+
+    public void setConnectionStateListener(ConnectionStateListener listener) {
+        this.connectionStateListener = listener;
+    }
 
     // 기기가 Bluetooth를 지원하는지 확인하는 메소드
     public boolean checkBluetoothSupoort(){
@@ -164,7 +178,11 @@ public class Bluetooth {
 
 
     public void startAdvertise(){
-        if(isAdvertising) return;
+        if(isAdvertising) {
+            Log.d(TAG, "startAdvertise skipped: already advertising");
+            return;
+        }
+        cancelPendingAdvertiseRestart();
         if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "BLUETOOTH_ADVERTISE permission not granted");
             return;
@@ -185,10 +203,9 @@ public class Bluetooth {
                 .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
                 .build();
 
-        isAdvertising = true;
         try {
             bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback);
-            Log.d("BLE", "Advertising 시작됨: " + Data.UWB_SERVICE_UUID.getUuid().toString());
+            Log.d("BLE", "Advertising 시작 요청: " + Data.UWB_SERVICE_UUID.getUuid().toString());
         }
         catch (SecurityException e) {
             Log.e("BLE", "권한 부족: " + e.getMessage());
@@ -202,20 +219,45 @@ public class Bluetooth {
             return;
         }
         isAdvertising = false;
+        cancelPendingAdvertiseRestart();
         bluetoothLeAdvertiser.stopAdvertising(advertiseCallback);
         Log.d(TAG, "BLE Advertise stopped.");
+    }
+
+    private void scheduleAdvertiseRestart() {
+        if (controllerMode || bluetoothLeAdvertiser == null) {
+            return;
+        }
+        cancelPendingAdvertiseRestart();
+        pendingAdvertiseTask = () -> {
+            pendingAdvertiseTask = null;
+            Log.d(TAG, "Restarting advertise after backoff");
+            startAdvertise();
+        };
+        advertiseHandler.postDelayed(pendingAdvertiseTask, 1500);
+    }
+
+    private void cancelPendingAdvertiseRestart() {
+        if (pendingAdvertiseTask != null) {
+            advertiseHandler.removeCallbacks(pendingAdvertiseTask);
+            pendingAdvertiseTask = null;
+        }
     }
 
     private final AdvertiseCallback advertiseCallback = new AdvertiseCallback() {
         @Override
         public void onStartSuccess(AdvertiseSettings settingsInEffect) {
             super.onStartSuccess(settingsInEffect);
+            isAdvertising = true;
+            cancelPendingAdvertiseRestart();
             Log.d("BLE", "Advertising 성공!");
         }
 
         @Override
         public void onStartFailure(int errorCode) {
             super.onStartFailure(errorCode);
+            isAdvertising = false;
+            scheduleAdvertiseRestart();
             Log.e("BLE", "Advertising 실패 에러코드: " + errorCode);
         }
     };
@@ -349,6 +391,9 @@ public class Bluetooth {
                 if (controllerMode) {
                     stopScan();
                 }
+                if (connectionStateListener != null) {
+                    connectionStateListener.onBleConnected();
+                }
                 if (ActivityCompat.checkSelfPermission(currentContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                     return;
                 }
@@ -357,6 +402,9 @@ public class Bluetooth {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "GATT Disconnected.");
                 stopRssiPolling(); // Stop polling RSSI when disconnected
+                if (connectionStateListener != null) {
+                    connectionStateListener.onBleDisconnected();
+                }
                 if (bluetoothGatt != null) {
                     bluetoothGatt.close();
                     bluetoothGatt = null;
@@ -506,10 +554,16 @@ public class Bluetooth {
                 if (!controllerMode) {
                     stopAdvertise();
                 }
+                if (connectionStateListener != null) {
+                    connectionStateListener.onBleConnected();
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "GATT Server: Device Disconnected - " + device.getAddress());
                 if (!controllerMode) {
-                    startAdvertise();
+                    scheduleAdvertiseRestart();
+                }
+                if (connectionStateListener != null) {
+                    connectionStateListener.onBleDisconnected();
                 }
             }
         }

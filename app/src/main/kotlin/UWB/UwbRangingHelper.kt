@@ -131,7 +131,7 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                     subSessionKeyInfo = null,
                     complexChannel = complexChannel, // Controlee needs this
                     peerDevices = listOf(partnerDevice),
-                    updateRateType = RangingParameters.RANGING_UPDATE_RATE_AUTOMATIC
+                    updateRateType = RangingParameters.RANGING_UPDATE_RATE_FREQUENT
                 )
 
                 Log.d(TAG, "Ranging session 준비 중... Parameters: $parameters")

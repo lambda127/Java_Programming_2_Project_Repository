@@ -106,6 +106,18 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
 
         bcl = new Bluetooth(this);
         bcl.setControllerMode(Data.isControllerDevice());
+        bcl.setConnectionStateListener(new Bluetooth.ConnectionStateListener() {
+            @Override
+            public void onBleConnected() {
+                updateStatus(Data.isControllerDevice() ? "BLE 연결 완료. UWB 준비 중..." : "컨트롤러 연결됨. 명령 대기...");
+            }
+
+            @Override
+            public void onBleDisconnected() {
+                updateStatus("BLE 연결 끊김. 세션 재준비 중...");
+                uwbRangingHelper.stopRanging();
+            }
+        });
 
         bleDeviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, Data.bleDeviceList);
 
