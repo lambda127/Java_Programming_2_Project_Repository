@@ -25,6 +25,8 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
     private var uwbManager: UwbManager? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var rangingJob: Job? = null
+    private var resultMonitorJob: Job? = null
+    private var lastResultTimestamp: Long = 0L
     private val TAG = "UwbRangingHelper"
 
     val isRanging: Boolean
@@ -85,6 +87,9 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
         Log.d(TAG, "startRanging 호출됨 - remoteAddress: ${remoteAddress.joinToString { "%02X".format(it) }}, sessionId: $sessionId, isController: $isController, complexChannel: $complexChannel")
         stopRanging()
 
+        lastResultTimestamp = System.currentTimeMillis()
+        startResultMonitor()
+
         rangingJob = scope.launch {
             try {
                 val manager = uwbManager ?: run {
@@ -143,8 +148,11 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
                             when(result) {
                                 is RangingResult.RangingResultPosition -> {
                                     val distance = result.position.distance
+                                    val now = System.currentTimeMillis()
+                                    val elapsed = now - lastResultTimestamp
+                                    lastResultTimestamp = now
                                     if (distance != null) {
-                                        Log.d(TAG, "Ranging 성공: 거리 = ${distance.value}m")
+                                        Log.d(TAG, "Ranging 성공: 거리 = ${distance.value}m (elapsed=${elapsed}ms)")
                                         callback.onRangingResult(distance.value)
                                     } else {
                                         Log.d(TAG, "Ranging 결과에 거리가 포함되지 않음")
@@ -194,6 +202,27 @@ class UwbRangingHelper(private val context: Context, private val callback: UwbRa
             rangingJob?.cancel()
         }
         rangingJob = null
+        stopResultMonitor()
         callback.onRangingComplete()
+    }
+
+    private fun startResultMonitor() {
+        stopResultMonitor()
+        resultMonitorJob = scope.launch {
+            while (isActive) {
+                delay(4000)
+                val elapsed = System.currentTimeMillis() - lastResultTimestamp
+                if (elapsed > 8000) {
+                    Log.w(TAG, "최근 ${elapsed}ms 동안 Ranging 결과가 없습니다.")
+                } else {
+                    Log.d(TAG, "최근 결과 수신 후 ${elapsed}ms 경과")
+                }
+            }
+        }
+    }
+
+    private fun stopResultMonitor() {
+        resultMonitorJob?.cancel()
+        resultMonitorJob = null
     }
 }
