@@ -330,8 +330,8 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     }
 
     @Override
-    public void onControllerAddressReceived(byte[] address, int channel, int preambleIndex) {
-        Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address) + ", Ch: " + channel + ", Preamble: " + preambleIndex);
+    public void onControllerAddressReceived(byte[] address, int channel, int preambleIndex, int sessionId) {
+        Log.d(TAG, "Controller address received: " + Bluetooth.bytesToHex(address) + ", Ch: " + channel + ", Preamble: " + preambleIndex + ", SessionId: " + sessionId);
         
         if (uwbRangingHelper.isRanging()) {
             Log.w(TAG, "Already ranging. Ignoring controller address.");
@@ -339,8 +339,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         }
 
         // We are the controlee (Advertiser)
-        // Use the session ID we generated (which the Controller is also using)
-        int sessionId = bcl.getSessionId();
+        // Use the session ID received from the Controller
         
         UwbComplexChannel complexChannel = new UwbComplexChannel(channel, preambleIndex);
         uwbRangingHelper.startRanging(address, sessionId, false, complexChannel);
@@ -386,9 +385,10 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
     public void onRangingStarted(boolean isController, UwbComplexChannel complexChannel) {
         Log.d(TAG, "onRangingStarted: isController=" + isController + ", channel=" + complexChannel);
         if (isController) {
-            // Write our local address AND the assigned complex channel to the remote device
+            // Write our local address AND the assigned complex channel AND session ID to the remote device
             if (localUwbAddress != null && complexChannel != null) {
-                bcl.writeUwbAddress(localUwbAddress, complexChannel.getChannel(), complexChannel.getPreambleIndex());
+                int sessionId = bcl.getSessionId(); // Controller uses its own session ID
+                bcl.writeUwbAddress(localUwbAddress, complexChannel.getChannel(), complexChannel.getPreambleIndex(), sessionId);
             } else {
                 Log.e(TAG, "Cannot write local address/channel because it is null");
             }

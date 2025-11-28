@@ -45,7 +45,7 @@ public class Bluetooth {
 
     public interface UwbParametersListener {
         void onUwbParametersReceived(byte[] params);
-        void onControllerAddressReceived(byte[] address, int channel, int preambleIndex);
+        void onControllerAddressReceived(byte[] address, int channel, int preambleIndex, int sessionId);
     }
 
     private UwbParametersListener uwbParametersListener;
@@ -448,7 +448,7 @@ public class Bluetooth {
         }
     }
 
-    public void writeUwbAddress(byte[] address, int channel, int preambleIndex) {
+    public void writeUwbAddress(byte[] address, int channel, int preambleIndex, int sessionId) {
         if (bluetoothGatt == null) {
             Log.e(TAG, "GATT is not connected.");
             return;
@@ -470,19 +470,20 @@ public class Bluetooth {
         }
 
 
-        // Format: [Length(1)] + [Address(Var)] + [Channel(4)] + [Preamble(4)]
-        int totalLength = 1 + address.length + 4 + 4;
+        // Format: [Length(1)] + [Address(Var)] + [Channel(4)] + [Preamble(4)] + [SessionID(4)]
+        int totalLength = 1 + address.length + 4 + 4 + 4;
         byte[] value = new byte[totalLength];
         ByteBuffer buffer = ByteBuffer.wrap(value);
         buffer.put((byte) address.length);
         buffer.put(address);
         buffer.putInt(channel);
         buffer.putInt(preambleIndex);
+        buffer.putInt(sessionId);
 
         characteristic.setValue(value);
         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         boolean success = bluetoothGatt.writeCharacteristic(characteristic);
-        Log.d(TAG, "Write UWB Address initiated: " + success + ", Payload: " + bytesToHex(value) + " (Ch: " + channel + ", Preamble: " + preambleIndex + ")");
+        Log.d(TAG, "Write UWB Address initiated: " + success + ", Payload: " + bytesToHex(value) + " (Ch: " + channel + ", Preamble: " + preambleIndex + ", SessionId: " + sessionId + ")");
     }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
@@ -571,9 +572,16 @@ public class Bluetooth {
                              buffer.get(address);
                              int channel = buffer.getInt();
                              int preambleIndex = buffer.getInt();
+                             
+                             int sessionId = 0;
+                             if (buffer.remaining() >= 4) {
+                                 sessionId = buffer.getInt();
+                             } else {
+                                 Log.w(TAG, "GATT Server: Session ID missing in payload, using default 0");
+                             }
 
                              if (uwbParametersListener != null) {
-                                 uwbParametersListener.onControllerAddressReceived(address, channel, preambleIndex);
+                                 uwbParametersListener.onControllerAddressReceived(address, channel, preambleIndex, sessionId);
                              }
                          } else {
                              Log.w(TAG, "GATT Server: Received invalid payload length.");
