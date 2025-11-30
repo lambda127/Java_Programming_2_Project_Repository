@@ -39,7 +39,7 @@ import UWB.UwbRangingCallback;
 
 import androidx.core.uwb.UwbComplexChannel;
 
-public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback, Bluetooth.BluetoothRangingListener {
+public class MainActivity extends AppCompatActivity implements Bluetooth.UwbParametersListener, UwbRangingCallback, Bluetooth.BluetoothRangingListener, Bluetooth.DeviceFoundListener {
     private static final String TAG = "UWB_BT_App_Java";
 
 
@@ -228,6 +228,7 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         }
         bcl.setUwbParametersListener(this);
         bcl.setBluetoothRangingListener(this);
+        bcl.setDeviceFoundListener(this);
 
         if (Data.isTesting) {
             // 테스트 모드: 버튼을 누를 때까지 대기
@@ -264,35 +265,20 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
         }
 
         isAutoRangingActive = true;
-        Log.d(TAG, "Starting auto ranging");
-        bcl.setControllerMode(Data.isControllerDevice());
-
-        if (Data.isControllerDevice()) {
-            updateStatus("컨트롤러: 스캔 중...");
-            // 컨트롤러는 스캔/연결만 수행
-            bcl.startScan();
-            uwbRangingHelper.prepareLocalAddress(true);
-
-            handler.postDelayed(() -> {
-                if (!Data.bleDeviceList.isEmpty()) {
-                    String deviceInfo = Data.bleDeviceList.get(0);
-                    String[] parts = deviceInfo.split("\\n");
-                    if (parts.length >= 2) {
-                        String address = parts[1];
-                        Log.d(TAG, "Auto-connecting to first scanned device: " + address);
-                        bcl.connectToDevice(address);
-                    }
-                } else {
-                    Log.w(TAG, "No BLE devices found yet while acting as Controller.");
-                }
-            }, 3000);
-        } else {
-            updateStatus("콘트롤리: 광고 중...");
-            // Controlee는 광고/GATT 서버만 유지
-            bcl.startGattServer();
-            bcl.startAdvertise();
-            uwbRangingHelper.prepareLocalAddress(false);
-        }
+        Log.d(TAG, "Starting auto ranging with Dynamic Role Negotiation");
+        
+        // Start BOTH Advertising and Scanning
+        updateStatus("탐색 중... (ID: " + bcl.getLocalDeviceId() + ")");
+        
+        // 1. Start Advertising (to be found by others)
+        bcl.startGattServer();
+        bcl.startAdvertise();
+        
+        // 2. Start Scanning (to find others)
+        bcl.startScan();
+        
+        // Prepare local address (just in case we become Controlee, or for Controller to send)
+        // Note: Role is not decided yet.
     }
 
     // 자동 Ranging 중지 로직
@@ -478,6 +464,51 @@ public class MainActivity extends AppCompatActivity implements Bluetooth.UwbPara
             rangingResultTextView.setText(btText + "\n" + uwbText);
         });
         Log.d(TAG, "Bluetooth RSSI: " + rssi + ", Distance: " + distance + ", Device: " + deviceName);
+    }
+
+    @Override
+    public void onDeviceFound(String address, long remoteDeviceId) {
+        long localDeviceId = bcl.getLocalDeviceId();
+        Log.d(TAG, "Device Found: " + address + ", Remote ID: " + remoteDeviceId + ", Local ID: " + localDeviceId);
+        
+        if (localDeviceId > remoteDeviceId) {
+            // I am the Controller
+            Log.i(TAG, "Role Negotiation: I am CONTROLLER (My ID " + localDeviceId + " > " + remoteDeviceId + ")");
+            updateStatus("역할 결정: Controller (연결 시도 중...)");
+            
+            // Stop Advertising (Controller doesn't need to advertise for connection)
+            bcl.stopAdvertise();
+            // Stop Scanning (Found a target)
+            bcl.stopScan();
+            
+            bcl.setControllerMode(true);
+            isRunningAsController = true;
+            
+            // Connect to the found device
+            bcl.connectToDevice(address);
+            
+            // Prepare UWB as Controller
+            uwbRangingHelper.prepareLocalAddress(true);
+            
+        } else if (localDeviceId < remoteDeviceId) {
+            // I am the Controlee
+            Log.i(TAG, "Role Negotiation: I am CONTROLEE (My ID " + localDeviceId + " < " + remoteDeviceId + ")");
+            updateStatus("역할 결정: Controlee (연결 대기 중...)");
+            
+            // Stop Scanning (I will be connected to)
+            bcl.stopScan();
+            // Continue Advertising (so Controller can connect)
+            
+            bcl.setControllerMode(false);
+            isRunningAsController = false;
+            
+            // Prepare UWB as Controlee
+            uwbRangingHelper.prepareLocalAddress(false);
+            
+        } else {
+            // IDs are equal (Very rare)
+            Log.w(TAG, "Role Negotiation: IDs are equal! Ignoring.");
+        }
     }
 
 

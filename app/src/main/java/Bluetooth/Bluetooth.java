@@ -26,6 +26,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelUuid;
 import android.util.Log;
 import android.widget.ArrayAdapter;
 
@@ -40,9 +41,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 
 public class Bluetooth {
     private static final String TAG = "BT";
+
+    private long localDeviceId;
+
+    public interface DeviceFoundListener {
+        void onDeviceFound(String address, long remoteDeviceId);
+    }
+
+    private DeviceFoundListener deviceFoundListener;
+
+    public void setDeviceFoundListener(DeviceFoundListener listener) {
+        this.deviceFoundListener = listener;
+    }
 
     public interface UwbParametersListener {
         void onUwbParametersReceived(byte[] params);
@@ -98,6 +112,12 @@ public class Bluetooth {
         }
         // Generate a random session ID for this device instance
         this.sessionId = new Random().nextInt();
+        
+        // Generate a random Device ID
+        this.localDeviceId = new Random().nextLong();
+        // Ensure positive ID for simplicity
+        if (this.localDeviceId < 0) this.localDeviceId = -this.localDeviceId;
+        Log.d(TAG, "Local Device ID generated: " + this.localDeviceId);
     }
 
     private ArrayAdapter<String> bleDeviceAdapter;
@@ -126,6 +146,10 @@ public class Bluetooth {
 
     public int getSessionId() {
         return sessionId;
+    }
+
+    public long getLocalDeviceId() {
+        return localDeviceId;
     }
 
 
@@ -195,14 +219,18 @@ public class Bluetooth {
                 .setConnectable(true) // GATT 연결을 위해 true로 설정
                 .build();
 
-        AdvertiseData data = Data.isIncludingUuid
-                ? new AdvertiseData.Builder()
-                .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
-                .addServiceUuid(Data.UWB_SERVICE_UUID)
-                .build()
-                : new AdvertiseData.Builder()
-                .setIncludeDeviceName(true) // 기기 이름 포함 (패킷 공간 부족 시 false로 변경)
-                .build();
+        AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
+        dataBuilder.setIncludeDeviceName(true);
+        
+        if (Data.isIncludingUuid) {
+            dataBuilder.addServiceUuid(Data.UWB_SERVICE_UUID);
+            // Include Device ID in Service Data
+            ByteBuffer buffer = ByteBuffer.allocate(8);
+            buffer.putLong(localDeviceId);
+            dataBuilder.addServiceData(Data.UWB_SERVICE_UUID, buffer.array());
+        }
+
+        AdvertiseData data = dataBuilder.build();
 
         isAdvertisingRequested = true;
         try {
@@ -377,6 +405,21 @@ public class Bluetooth {
                     Data.bleDevicesMap.put(device.getAddress(), result);
                     Data.bleDeviceList.add(device.getName() + "\n" + device.getAddress());
                     if(bleDeviceAdapter != null) bleDeviceAdapter.notifyDataSetChanged();
+                    
+                    // Parse Service Data for Device ID
+                    Map<ParcelUuid, byte[]> serviceData = result.getScanRecord().getServiceData();
+                    if (serviceData != null && serviceData.containsKey(Data.UWB_SERVICE_UUID)) {
+                        byte[] data = serviceData.get(Data.UWB_SERVICE_UUID);
+                        if (data != null && data.length >= 8) {
+                            ByteBuffer buffer = ByteBuffer.wrap(data);
+                            long remoteDeviceId = buffer.getLong();
+                            Log.d(TAG, "Found Remote Device ID: " + remoteDeviceId);
+                            
+                            if (deviceFoundListener != null) {
+                                deviceFoundListener.onDeviceFound(device.getAddress(), remoteDeviceId);
+                            }
+                        }
+                    }
                 }
             }
         }
