@@ -1,15 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace 'com.javaprogemming.project'
-    compileSdk 36
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.javaprogemming.project"
-        minSdk 34
-        targetSdk 36
+        minSdk 31
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -26,14 +27,30 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
 }
 
 dependencies {
+    // 기본 AndroidX 라이브러리
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Java에서 UI 상태 관리를 위한 LiveData
+    implementation "androidx.lifecycle:lifecycle-viewmodel:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-livedata:2.7.0"
+    implementation 'androidx.activity:activity:1.8.2'
+
 
     implementation libs.appcompat
     implementation libs.material
     implementation libs.activity
     implementation libs.constraintlayout
+    implementation "androidx.core.uwb:uwb:1.0.0-alpha08"
+
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
